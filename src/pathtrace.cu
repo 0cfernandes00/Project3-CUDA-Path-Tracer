@@ -15,7 +15,11 @@
 #include "intersections.h"
 #include "interactions.h"
 
+#include <iostream>
+
 #define ERRORCHECK 1
+#define M_PI 3.14159265358979323846
+#define RAY_EPSILON 0.00005f
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
@@ -280,6 +284,94 @@ __global__ void shadeFakeMaterial(
     }
 }
 
+__global__ void shadeDiffuseMaterial(
+    int iter,
+    int num_paths,
+    ShadeableIntersection* shadeableIntersections,
+    PathSegment* pathSegments,
+    Material* materials)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_paths)
+    {
+
+
+        ShadeableIntersection intersection = shadeableIntersections[idx];
+        if (intersection.t > 0.0f) // if the intersection exists...
+        {
+            // Set up the RNG
+            // LOOK: this is how you use thrust's RNG! Please look at
+            // makeSeededRandomEngine as well.
+            thrust::default_random_engine rng = makeSeededRandomEngine(iter, idx, pathSegments[idx].remainingBounces);
+            thrust::uniform_real_distribution<float> u01(0, 1);
+
+            Material material = materials[intersection.materialId];
+            glm::vec3 materialColor = material.color;
+
+            if (pathSegments[idx].remainingBounces <= 0) {
+                return;
+			}
+
+            // If the material indicates that the object was a light, "light" the ray
+            if (material.emittance > 0.0f) {
+                pathSegments[idx].color *= (materialColor * material.emittance);
+				pathSegments[idx].remainingBounces = 0; // Terminate this path
+            }
+            // Otherwise, do some pseudo-lighting computation. This is actually more
+            // like what you would expect from shading in a rasterizer like OpenGL.
+            // TODO: replace this! you should be able to start with basically a one-liner
+            else {
+
+
+
+				// generate new ray direction with cosine-weighted hemisphere sampling
+				glm::vec3 normal = intersection.surfaceNormal;
+
+                //PathSegment& pathSegment, glm::vec3 intersect, glm::vec3 normal, const Material& m, thrust::default_random_engine& rng)
+                scatterRay(pathSegments[idx], pathSegments[idx].ray.origin + pathSegments[idx].ray.direction * intersection.t, normal, material, rng);
+
+
+				glm::vec3 wiW = pathSegments[idx].ray.direction;
+
+                float INV_PI = 1 / M_PI;
+                float pdf;
+				float cosTheta = glm::dot(wiW, normal);
+				if (cosTheta <= 0.0f) { // outside the hemisphere
+                    //pathSegments[idx].remainingBounces = 0; // Terminate this path
+                    //return;
+                }
+
+                glm::vec3 bsdf = materialColor * INV_PI;
+
+				pdf = cosTheta * INV_PI;
+
+                // Throughput update
+                //pathSegments[idx].color *= (bsdf * abs(cosTheta))/pdf;
+                pathSegments[idx].color *= materialColor;
+
+
+                /*
+                if (pdf < RAY_EPSILON) {
+                    //pathSegments[idx].color *= (bsdf * abs(cosTheta))/pdf;
+                    pathSegments[idx].color *= materialColor;
+                }
+                */
+
+
+
+
+            }
+            // If there was no intersection, color the ray black.
+            // Lots of renderers use 4 channel color, RGBA, where A = alpha, often
+            // used for opacity, in which case they can indicate "no opacity".
+            // This can be useful for post-processing and image compositing.
+        }
+        else {
+            pathSegments[idx].color = glm::vec3(0.0f);
+        }
+    }
+}
+
 // Add the current iteration's output to the overall image
 __global__ void finalGather(int nPaths, glm::vec3* image, PathSegment* iterationPaths)
 {
@@ -290,6 +382,12 @@ __global__ void finalGather(int nPaths, glm::vec3* image, PathSegment* iteration
         PathSegment iterationPath = iterationPaths[index];
         image[iterationPath.pixelIndex] += iterationPath.color;
     }
+}
+
+
+__host__ __device__ bool compareMatId(const PathSegment& a)
+{
+    return pathSegments[idx].materialId;
 }
 
 /**
@@ -352,6 +450,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
     // --- PathSegment Tracing Stage ---
     // Shoot ray into scene, bounce between objects, push shading chunks
 
+
     bool iterationComplete = false;
     while (!iterationComplete)
     {
@@ -381,14 +480,33 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         // TODO: compare between directly shading the path segments and shading
         // path segments that have been reshuffled to be contiguous in memory.
 
+        /*
         shadeFakeMaterial<<<numblocksPathSegmentTracing, blockSize1d>>>(
             iter,
             num_paths,
             dev_intersections,
             dev_paths,
             dev_materials
-        );
-        iterationComplete = true; // TODO: should be based off stream compaction results.
+        );*/
+
+        // sort by material before performing shading and sampling
+        // you can use thrust for this
+        
+		// shuffle path segments to be contiguous in memory and sort by material
+		thrust::sort_by_key(thrust::device, dev_intersections, dev_intersections + num_paths, dev_paths, Material);
+
+        // shading directly in one big kernel
+        shadeDiffuseMaterial<<<numblocksPathSegmentTracing, blockSize1d>>>(
+            iter,
+            num_paths,
+            dev_intersections,
+            dev_paths,
+            dev_materials
+		);
+        
+
+        if (num_paths == 0 || depth >= traceDepth) iterationComplete = true; // TODO: should be based off stream compaction results.
+        
 
         if (guiData != NULL)
         {
