@@ -3,8 +3,9 @@ CUDA Path Tracer
 
 **University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 3**
 
-* (TODO) YOUR NAME HERE
-* Tested on: (TODO) Windows 22, i7-2222 @ 2.22GHz 22GB, GTX 222 222MB (Moore 2222 Lab)
+* Caroline Fernandes
+  * [LinkedIn](https://www.linkedin.com/in/caroline-fernandes-0-/), [personal website](https://0cfernandes00.wixsite.com/visualfx)
+* Tested on: Windows 11, i9-14900HX @ 2.20GHz, Nvidia GeForce RTX 4070
 
 ### (TODO: Your README)
 
