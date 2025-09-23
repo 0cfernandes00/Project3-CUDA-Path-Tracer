@@ -6,6 +6,7 @@
 #include <thrust/execution_policy.h>
 #include <thrust/random.h>
 #include <thrust/remove.h>
+#include <thrust/partition.h>
 
 #include "sceneStructs.h"
 #include "scene.h"
@@ -143,6 +144,8 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
+
+
     if (x < cam.resolution.x && y < cam.resolution.y) {
         int index = x + (y * cam.resolution.x);
         PathSegment& segment = pathSegments[index];
@@ -151,10 +154,17 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
         segment.color = glm::vec3(1.0f, 1.0f, 1.0f);
 
         // TODO: implement antialiasing by jittering the ray
+        thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, pathSegments[index].remainingBounces);
+        thrust::uniform_real_distribution<float> u05(-0.5, 0.5);
+       
+
+        // jitter ray direction for antialiasing
+
         segment.ray.direction = glm::normalize(cam.view
-            - cam.right * cam.pixelLength.x * ((float)x - (float)cam.resolution.x * 0.5f)
-            - cam.up * cam.pixelLength.y * ((float)y - (float)cam.resolution.y * 0.5f)
+            - cam.right * cam.pixelLength.x * ((float)x + u05(rng) - (float)cam.resolution.x * 0.5f)
+            - cam.up * cam.pixelLength.y * ((float)y + u05(rng) - (float)cam.resolution.y * 0.5f)
         );
+        
 
         segment.pixelIndex = index;
         segment.remainingBounces = traceDepth;
@@ -341,21 +351,10 @@ __global__ void shadeDiffuseMaterial(
                     //return;
                 }
 
-                glm::vec3 bsdf = materialColor * INV_PI;
-
-				pdf = cosTheta * INV_PI;
-
-                // Throughput update
-                //pathSegments[idx].color *= (bsdf * abs(cosTheta))/pdf;
                 pathSegments[idx].color *= materialColor;
 
 
-                /*
-                if (pdf < RAY_EPSILON) {
-                    //pathSegments[idx].color *= (bsdf * abs(cosTheta))/pdf;
-                    pathSegments[idx].color *= materialColor;
-                }
-                */
+
 
 
 
@@ -385,10 +384,23 @@ __global__ void finalGather(int nPaths, glm::vec3* image, PathSegment* iteration
 }
 
 
-__host__ __device__ bool compareMatId(const PathSegment& a)
+struct compareMatId
 {
-    return pathSegments[idx].materialId;
-}
+    __host__ __device__
+    bool operator()(const ShadeableIntersection& a, const ShadeableIntersection& b) const {
+        return a.materialId < b.materialId;
+    }
+};
+
+struct usefulPath
+
+{
+    __host__ __device__
+    bool operator()(const PathSegment& seg) const {
+        return seg.remainingBounces > 0;
+    }
+};
+
 
 /**
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
@@ -493,8 +505,10 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         // you can use thrust for this
         
 		// shuffle path segments to be contiguous in memory and sort by material
-		thrust::sort_by_key(thrust::device, dev_intersections, dev_intersections + num_paths, dev_paths, Material);
+		thrust::sort_by_key(thrust::device, dev_intersections, dev_intersections + num_paths, dev_paths, compareMatId());
 
+
+        
         // shading directly in one big kernel
         shadeDiffuseMaterial<<<numblocksPathSegmentTracing, blockSize1d>>>(
             iter,
@@ -503,6 +517,12 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             dev_paths,
             dev_materials
 		);
+
+        //TODO: Stream compact away all of the terminated paths.
+//     You may use either your implementation or `thrust::remove_if` or its
+//     cousins.
+        PathSegment* dev_path_end = thrust::partition(thrust::device, dev_paths, dev_paths + num_paths, usefulPath());
+        num_paths = dev_path_end - dev_paths;
         
 
         if (num_paths == 0 || depth >= traceDepth) iterationComplete = true; // TODO: should be based off stream compaction results.
@@ -516,7 +536,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
     // Assemble this iteration and apply it to the image
     dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
-    finalGather<<<numBlocksPixels, blockSize1d>>>(num_paths, dev_image, dev_paths);
+    finalGather<<<numBlocksPixels, blockSize1d>>>(pixelcount, dev_image, dev_paths);
 
     ///////////////////////////////////////////////////////////////////////////
 
