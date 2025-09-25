@@ -56,15 +56,75 @@ __host__ __device__ void scatterRay(
     // calculateRandomDirectionInHemisphere defined above.
 
     /*
-    Ray ray;
-    glm::vec3 color;
-    int pixelIndex;
-    int remainingBounces;
+    if (m.hasReflective && m.hasRefractive) {
+
+        // Ideal DIELECTRIC interaction
+
+        glm::vec3 wo = glm::normalize(pathSegment.ray.direction);
+        float n1 = 1.0f; // air
+        float n2 = m.indexOfRefraction; // material
+        n2 = 1.1f;
+        glm::vec3 n = normal;
+        float cosTheta1 = glm::dot(-wo, n);
+        if (cosTheta1 < 0) { // inside the surface
+            n = -normal;
+            cosTheta1 = glm::dot(-wo, n);
+            float temp = n1;
+            n1 = n2;
+            n2 = temp;
+        }
+        float nRatio = n1 / n2;
+        float sin2Theta2 = nRatio * nRatio * (1 - cosTheta1 * cosTheta1);
+        if (sin2Theta2 > 1) { // total internal reflection
+            glm::vec3 wi = glm::reflect(wo, n);
+            pathSegment.ray.origin = intersect + 0.001f * n;
+            pathSegment.ray.direction = glm::normalize(wi);
+            pathSegment.remainingBounces--;
+            return;
+        }
+        float cosTheta2 = sqrt(1 - sin2Theta2);
+        float R0 = (n1 - n2) * (n1 - n2) / ((n1 + n2) * (n1 + n2));
+        float R = R0 + (1 - R0) * pow((1 - cosTheta1), 5);
+        thrust::uniform_real_distribution<float> u01(0, 1);
+        if (u01(rng) < R) { // reflect
+            glm::vec3 wi = glm::reflect(wo, n);
+            pathSegment.ray.origin = intersect + 0.001f * n;
+            pathSegment.ray.direction = glm::normalize(wi);
+            pathSegment.remainingBounces--;
+            return;
+        }
+        else { // refract
+            glm::vec3 wi; // = nRatio * wo + (nRatio * cosTheta1 - cosTheta2) * n;
+			wi = glm::refract(wo, n, nRatio);
+            pathSegment.ray.origin = intersect - 0.001f * n;
+            pathSegment.ray.direction = glm::normalize(wi);
+            pathSegment.remainingBounces--;
+            return;
+        }
+
+
+    }
     */
-    glm::vec3 wi = calculateRandomDirectionInHemisphere(normal, rng);
+    if (m.hasReflective) {
 
-	pathSegment.ray.origin = intersect + 0.001f * normal;
-	pathSegment.ray.direction = glm::normalize(wi);
+        // Ideal SPECULAR interaction
 
-	pathSegment.remainingBounces--;
+        glm::vec3 wo = glm::normalize(pathSegment.ray.direction);
+        glm::vec3 wi = glm::reflect(wo, normal);
+        pathSegment.ray.origin = intersect + 0.001f * normal;
+        pathSegment.ray.direction = glm::normalize(wi);
+        pathSegment.remainingBounces--;
+        return;
+	}
+    else {
+        // Ideal DIFFUSE interaction
+        glm::vec3 wi = calculateRandomDirectionInHemisphere(normal, rng);
+
+        pathSegment.ray.origin = intersect + 0.001f * normal;
+        pathSegment.ray.direction = glm::normalize(wi);
+
+        pathSegment.remainingBounces--;
+        return;
+    }
+    
 }
