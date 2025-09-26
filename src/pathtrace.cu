@@ -88,6 +88,9 @@ static ShadeableIntersection* dev_intersections = NULL;
 // TODO: static variables for device memory, any extra info you need, etc
 // ...
 
+//static Triangle* dev_triangles = NULL;
+static Vertex* dev_vertices = NULL;
+
 void InitDataContainer(GuiDataContainer* imGuiData)
 {
     guiData = imGuiData;
@@ -116,6 +119,12 @@ void pathtraceInit(Scene* scene)
 
     // TODO: initialize any extra device memeory you need
 
+    //cudaMalloc(&dev_triangles, scene->triangles.size() * sizeof(Triangle));
+    //cudaMemcpy(dev_triangles, scene->triangles.data(), scene->triangles.size() * sizeof(Triangle), cudaMemcpyHostToDevice);
+
+    cudaMalloc(&dev_vertices, scene->vertices.size() * sizeof(Vertex));
+    cudaMemcpy(dev_vertices, scene->vertices.data(), scene->vertices.size() * sizeof(Vertex), cudaMemcpyHostToDevice);
+
     checkCUDAError("pathtraceInit");
 }
 
@@ -128,8 +137,13 @@ void pathtraceFree()
     cudaFree(dev_intersections);
     // TODO: clean up any extra device memory you created
 
+    //cudaFree(dev_triangles);
+    cudaFree(dev_vertices);
+
     checkCUDAError("pathtraceFree");
 }
+
+
 
 /**
 * Generate PathSegments with rays from the camera through the screen into the
@@ -150,6 +164,7 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
         int index = x + (y * cam.resolution.x);
         PathSegment& segment = pathSegments[index];
 
+
         segment.ray.origin = cam.position;
         segment.color = glm::vec3(1.0f, 1.0f, 1.0f);
 
@@ -157,19 +172,96 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
         thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, pathSegments[index].remainingBounces);
         thrust::uniform_real_distribution<float> u05(-0.5, 0.5);
        
+        float x_rng = 0.f;
+        float y_rng = 0.f;
 
+        x_rng = u05(rng);
+        y_rng = u05(rng);
         // jitter ray direction for antialiasing
 
         segment.ray.direction = glm::normalize(cam.view
-            - cam.right * cam.pixelLength.x * ((float)x + u05(rng) - (float)cam.resolution.x * 0.5f)
-            - cam.up * cam.pixelLength.y * ((float)y + u05(rng) - (float)cam.resolution.y * 0.5f)
+            - cam.right * cam.pixelLength.x * ((float)x + x_rng - (float)cam.resolution.x * 0.5f)
+            - cam.up * cam.pixelLength.y * ((float)y + y_rng - (float)cam.resolution.y * 0.5f)
         );
+
+
+        // lens effect Depth of Field
+        
+        if (cam.lensRadius > 0) {
+            // Sample point on lens
+
+            // returns a vec3
+                // TODO
+            glm::vec2 sample(0,0);
+
+            thrust::uniform_real_distribution<float> u01(0, 1);
+            glm::vec2 xi = glm::vec2(u01(rng), u01(rng));
+
+            glm::vec2 offset = 2.0f * xi - glm::vec2(1, 1);
+            if (offset.x = 0 && offset.y == 0) {
+                sample = glm::vec2(0.f);
+            }
+
+            float theta, r;
+            if (abs(offset.x) > abs(offset.y)) {
+                r = offset.x;
+                theta = PI / 4.f * (offset.y / offset.x);
+            }
+            else {
+                r = offset.y;
+                theta = PI / 2.f - PI / 4.f * (offset.x / offset.y);
+            }
+            sample = r * glm::vec2(cos(theta), sin(theta));
+
+
+
+            glm::vec2 pLens = cam.lensRadius * sample;
+            glm::vec3 pLens_world = pLens.x * cam.right + pLens.y * cam.up;
+
+            // Compute point on plane of focus
+            float ft = cam.focalDistance / segment.ray.direction.z;
+            glm::vec3 pFocus = cam.position + segment.ray.direction * cam.focalDistance;
+
+            // Update ray for effect of lens 
+            segment.ray.origin = cam.position + pLens_world;
+            segment.ray.direction = glm::normalize(pFocus - segment.ray.origin);
+
+        }
+        
         
 
         segment.pixelIndex = index;
         segment.remainingBounces = traceDepth;
     }
 }
+
+
+__host__ __device__ glm::vec3 barycentricCoords(
+    glm::vec3 p,
+    glm::vec3 v0,
+    glm::vec3 v1,
+    glm::vec3 v2)
+{
+    glm::vec3 sideA = v1 - v2;
+    glm::vec3 sideB = v2 - v0;
+    float s = glm::length(glm::cross(sideA, sideB));
+
+    sideA = p - v1;
+    sideB = p - v2;
+    float s1 = glm::length(glm::cross(sideA, sideB)) / s;
+
+    sideA = p - v0;
+    sideB = p - v2;
+    float s2 = glm::length(glm::cross(sideA, sideB)) / s;
+
+    sideB = p - v1;
+    float s3 = glm::length(glm::cross(sideA, sideB)) / s;
+
+    return glm::vec3(s1, s2, s3);
+
+}
+
+
 
 // TODO:
 // computeIntersections handles generating ray intersections ONLY.
@@ -181,7 +273,9 @@ __global__ void computeIntersections(
     PathSegment* pathSegments,
     Geom* geoms,
     int geoms_size,
-    ShadeableIntersection* intersections)
+    ShadeableIntersection* intersections, 
+    Vertex* verts,
+    int vert_size)
 {
     int path_index = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -195,6 +289,7 @@ __global__ void computeIntersections(
         float t_min = FLT_MAX;
         int hit_geom_index = -1;
         bool outside = true;
+        glm::vec2 uv;
 
         glm::vec3 tmp_intersect;
         glm::vec3 tmp_normal;
@@ -212,11 +307,15 @@ __global__ void computeIntersections(
             else if (geom.type == SPHERE)
             {
                 t = sphereIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, outside);
+            } 
+            /*
+            else if (geom.type == MESH)
+            {
+                t = meshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, outside, uv, verts, vert_size, t_min);
             }
-            // TODO: add more intersection tests here... triangle? metaball? CSG?
+             */
+    
 
-            // Compute the minimum t from the intersection tests to determine what
-            // scene geometry object was hit first.
             if (t > 0.0f && t_min > t)
             {
                 t_min = t;
@@ -224,8 +323,39 @@ __global__ void computeIntersections(
                 intersect_point = tmp_intersect;
                 normal = tmp_normal;
             }
-        }
 
+            
+            // TODO: add more intersection tests here... triangle? metaball? CSG?
+
+            // Compute the minimum t from the intersection tests to determine what
+            // scene geometry object was hit first.
+
+        }
+        
+        
+        for (int vertIdx = 0; vertIdx < vert_size; vertIdx += 3)
+        {
+            Vertex& v1 = verts[vertIdx];
+            Vertex& v2 = verts[vertIdx + 1];
+            Vertex& v3 = verts[vertIdx + 2];
+            glm::vec3 baryCoords;
+            bool hit = glm::intersectRayTriangle(pathSegment.ray.origin, pathSegment.ray.direction, v1.m_pos, v2.m_pos, v3.m_pos, baryCoords);
+            t = baryCoords.z;
+
+            if (t > 0.0f && t_min > t)
+            {
+                t_min = t;
+                //mat_index = v1.materialid;
+                glm::vec3 p = pathSegment.ray.origin + (pathSegment.ray.direction * t);
+                glm::vec3 bary = barycentricCoords(p, v1.m_pos, v2.m_pos, v3.m_pos); // Calculate barycentric coordinates
+                normal = glm::normalize(bary.x * v1.m_normal + bary.y * v2.m_normal + bary.z * v3.m_normal); // Interpolate normals
+                uv = bary.x * v1.m_uv + bary.y * v2.m_uv + bary.z * v3.m_uv; // Interpolate uv
+                //tmp_tangent = bary.x * v1.tangent + bary.y * v2.tangent + bary.z * v3.tangent;
+            }
+        }
+        
+        
+        
         if (hit_geom_index == -1)
         {
             intersections[path_index].t = -1.0f;
@@ -477,7 +607,9 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             dev_paths,
             dev_geoms,
             hst_scene->geoms.size(),
-            dev_intersections
+            dev_intersections,
+            dev_vertices,
+            (int)hst_scene->vertices.size()
         );
         checkCUDAError("trace one bounce");
         cudaDeviceSynchronize();

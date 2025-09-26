@@ -6,19 +6,51 @@
 
 #include <string>
 #include <vector>
+#include <array>
 
 #define BACKGROUND_COLOR (glm::vec3(0.0f))
 
 enum GeomType
 {
     SPHERE,
-    CUBE
+    CUBE,
+	MESH
 };
 
 struct Ray
 {
     glm::vec3 origin;
     glm::vec3 direction;
+};
+
+class Triangle {
+public:
+    std::array<glm::vec3, 3> pos;
+    std::array<glm::vec3, 3> nor;
+    std::array<glm::vec3, 3> uv;
+    int index_in_mesh; // What index in the mesh's vector<Triangles> does this sit at?
+
+public:
+    Triangle(glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, int idx);
+    
+    glm::vec3 operator[](unsigned int) const;
+
+    friend class Mesh;
+};
+
+
+
+struct Vertex
+{
+    glm::vec3 m_pos; 
+    glm::vec3 m_normal;
+    glm::vec2 m_uv;
+/*    glm::vec3 m_color;  
+    
+     */   
+
+    Vertex();
+    Vertex(glm::vec3 p, glm::vec3 nor, glm::vec2 uv);
 };
 
 struct Geom
@@ -31,6 +63,10 @@ struct Geom
     glm::mat4 transform;
     glm::mat4 inverseTransform;
     glm::mat4 invTranspose;
+    char* filename;
+    Vertex* verts;
+    Triangle* triangle;
+
 };
 
 struct Material
@@ -57,6 +93,8 @@ struct Camera
     glm::vec3 right;
     glm::vec2 fov;
     glm::vec2 pixelLength;
+    float lensRadius = 0.05f;
+    float focalDistance = 5.0f;
 };
 
 struct RenderState

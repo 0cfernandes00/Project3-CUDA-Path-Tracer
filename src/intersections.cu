@@ -104,10 +104,79 @@ __host__ __device__ float sphereIntersectionTest(
 
     intersectionPoint = multiplyMV(sphere.transform, glm::vec4(objspaceIntersection, 1.f));
     normal = glm::normalize(multiplyMV(sphere.invTranspose, glm::vec4(objspaceIntersection, 0.f)));
+    /*
     if (!outside)
     {
         normal = -normal;
     }
-
+    */
     return glm::length(r.origin - intersectionPoint);
 }
+
+
+
+__host__ __device__ glm::vec3 barycentric(glm::vec3 p, glm::vec3 t1, glm::vec3 t2, glm::vec3 t3) {
+    glm::vec3 edge1 = t2 - t1;
+    glm::vec3 edge2 = t3 - t2;
+    float S = length(cross(edge1, edge2));
+
+    edge1 = p - t2;
+    edge2 = p - t3;
+    float S1 = length(cross(edge1, edge2));
+
+    edge1 = p - t1;
+    edge2 = p - t3;
+    float S2 = length(cross(edge1, edge2));
+
+    edge1 = p - t1;
+    edge2 = p - t2;
+    float S3 = length(cross(edge1, edge2));
+
+    return glm::vec3(S1 / S, S2 / S, S3 / S);
+}
+
+
+
+__host__ __device__ float meshIntersectionTest(
+    Geom mesh,
+    Ray r,
+    glm::vec3& intersectionPoint,
+    glm::vec3& normal,
+    bool& outside,
+    glm::vec2& uv,
+    Vertex* verts,
+    int vert_size,
+    float t_min)
+{
+
+    float t = FLT_MAX;
+    ;
+
+    for (int vertIdx = 0; vertIdx < vert_size; vertIdx += 3)
+    {
+        Vertex& v1 = verts[vertIdx];
+        Vertex& v2 = verts[vertIdx + 1];
+        Vertex& v3 = verts[vertIdx + 2];
+        glm::vec3 baryCoords;
+        bool hit = glm::intersectRayTriangle(r.origin, r.direction, v1.m_pos, v2.m_pos, v3.m_pos, baryCoords);
+        t = baryCoords.z;
+
+        if (t > 0.0f && t_min > t && hit)
+        {
+            t_min = t;
+            //mat_index = v1.materialid;
+            glm::vec3 p = r.origin + (r.direction * t);
+            intersectionPoint = p;
+            glm::vec3 bary = barycentric(p, v1.m_pos, v2.m_pos, v3.m_pos); // Calculate barycentric coordinates
+            normal = glm::normalize(bary.x * v1.m_normal + bary.y * v2.m_normal + bary.z * v3.m_normal); // Interpolate normals
+            uv = bary.x * v1.m_uv + bary.y * v2.m_uv + bary.z * v3.m_uv; // Interpolate uv
+            //tmp_tangent = bary.x * v1.tangent + bary.y * v2.tangent + bary.z * v3.tangent;
+
+        }
+
+    }
+    return t_min;
+
+
+}
+
