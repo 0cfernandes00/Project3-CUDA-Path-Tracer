@@ -46,6 +46,7 @@ public:
     glm::vec3 centroid;
     int index_in_mesh; // What index in the mesh's vector<Triangles> does this sit at?
 
+    Triangle();
     Triangle(Vertex p1, Vertex p2, Vertex p3, int idx);
     
     glm::vec3 operator[](unsigned int) const;

@@ -320,7 +320,9 @@ __host__ __device__ float IntersectBVH(
     const int* tri_indices,
     int nodeIdx, 
     float t_max,
-    int triangles_count) 
+    int triangles_count,
+    glm::vec3 &intersectP,
+    glm::vec3 &normal) 
 {
 
 #if 0
@@ -349,6 +351,8 @@ __host__ __device__ float IntersectBVH(
     int stack_ptr = 0;
     stack[stack_ptr++] = 0;
 
+    int tri_idx_near = -1;
+
     while (stack_ptr > 0) {
         int node_idx = stack[--stack_ptr];
         const BVHNode& node = nodes[node_idx];
@@ -360,14 +364,15 @@ __host__ __device__ float IntersectBVH(
         
         if (node.isLeaf()) {
             for (int i = 0; i < node.primCount; i++) {
-                int triIdx = node.firstPrim + i;
+                int triIdx = tri_indices[node.firstPrim + i];
                 const Triangle& tri = triangles[triIdx];
                 glm::vec3 baryCoords;
 
                 bool hit = glm::intersectRayTriangle(ray.origin,ray.direction,tri.v1.m_pos, tri.v2.m_pos, tri.v3.m_pos, baryCoords);
                 float out_t = baryCoords.z;
-                if (out_t > 0.0f && out_t < closest_t) {
+                if (hit && out_t > 0.0f && out_t < closest_t) {
                     closest_t = out_t;
+                    tri_idx_near = triIdx;
                 }
             }
         }
@@ -376,7 +381,25 @@ __host__ __device__ float IntersectBVH(
             stack[stack_ptr++] = node.leftChild;
         }
     }
-    return (closest_t == FLT_MAX) ? -1.0f : closest_t;
+
+    if (closest_t == FLT_MAX || tri_idx_near == -1) {
+        return -1.0f;
+    }
+
+    intersectP = ray.origin + (ray.direction * closest_t);
+
+    Triangle tri_near = triangles[tri_idx_near];
+    Vertex v1 = tri_near.v1;
+    Vertex v2 = tri_near.v2;
+    Vertex v3 = tri_near.v3;
+
+    // Calculate barycentric coordinates
+    glm::vec3 bary = barycentricCoords(intersectP, v1.m_pos, v2.m_pos, v3.m_pos); 
+
+    // Interpolate normals
+    normal = glm::normalize(bary.x * v1.m_normal + bary.y * v2.m_normal + bary.z * v3.m_normal); 
+
+    return closest_t;
 
 #endif
 }
@@ -410,6 +433,7 @@ __global__ void computeIntersections(
         glm::vec3 intersect_point;
         glm::vec3 normal;
         float t_min = FLT_MAX;
+        int obj_hit = -1;
         int hit_geom_index = -1;
         bool outside = true;
         glm::vec2 uv;
@@ -431,12 +455,14 @@ __global__ void computeIntersections(
             {
                 t = sphereIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, outside);
             } 
-            /*
             else if (geom.type == MESH)
             {
-                t = meshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, outside, uv, verts, vert_size, t_min);
+
+                t = IntersectBVH(pathSegment.ray, bvh_nodes, triangles, tri_indices, 0, t_min, triangles_count, tmp_intersect, tmp_normal);
+
+                //t = meshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, outside, uv, verts, vert_size, t_min);
             }
-             */
+    
             if (t > 0.0f && t_min > t)
             {
                 t_min = t;
@@ -473,15 +499,6 @@ __global__ void computeIntersections(
                 uv = bary.x * v1.m_uv + bary.y * v2.m_uv + bary.z * v3.m_uv; // Interpolate uv
                 //tmp_tangent = bary.x * v1.tangent + bary.y * v2.tangent + bary.z * v3.tangent;
             }
-        }
-    # else
-        float bvh_t = IntersectBVH(pathSegment.ray, bvh_nodes, triangles, tri_indices, 0, t_min, triangles_count);
-
-        if (bvh_t > 0.0f && bvh_t < t_min) {
-            t_min = bvh_t;
-            hit_geom_index = -2; // Special value for triangle hits
-            intersect_point = pathSegment.ray.origin + pathSegment.ray.direction * bvh_t;
-            // TODO: Get proper normal from triangle
         }
     #endif
         

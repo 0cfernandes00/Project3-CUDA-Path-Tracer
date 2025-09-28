@@ -22,10 +22,11 @@ namespace fs = std::filesystem;
 using namespace std;
 using json = nlohmann::json;
 
+Triangle::Triangle()
+    : v1(Vertex()), v2(Vertex()), v3(Vertex()), centroid(0.f), index_in_mesh(-1) {}
 
 Triangle::Triangle(Vertex p1, Vertex p2, Vertex p3, int idx)
-    : v1(p1), v2(p2), v3(p3), centroid(0.f), index_in_mesh(idx) {
-}
+    : v1(p1), v2(p2), v3(p3), centroid(0.f), index_in_mesh(idx) {}
 
 Vertex::Vertex()
     : m_pos(glm::vec3(0)), m_normal(glm::vec3(0)) {}
@@ -65,7 +66,7 @@ void Scene::UpdateNodeBounds(unsigned int nodeIdx)
     node.aabbMin = glm::vec3(1e30f);
     node.aabbMax = glm::vec3(-1e30f);
     for (unsigned int first = node.firstPrim, i = 0; i < node.primCount; i++) {
-        Triangle& leafTri = this->triangles[first + i];
+        Triangle& leafTri = this->triangles[tri_indices[first + i]];
         node.aabbMin = glm::min(node.aabbMin, leafTri.v1.m_pos);
         node.aabbMin = glm::min(node.aabbMin, leafTri.v2.m_pos);
         node.aabbMin = glm::min(node.aabbMin, leafTri.v3.m_pos);
@@ -95,11 +96,11 @@ void Scene::Subdivide(unsigned int nodeIdx)
     int j = i + node.primCount - 1;
     while (i <= j) 
     {
-        if (this->triangles[i].centroid[axis] < splitPos) {
+        if (this->triangles[tri_indices[i]].centroid[axis] < splitPos) {
             i++;
         }
         else {
-            swap(this->triangles[i], this->triangles[j--]);
+            swap(tri_indices[i], tri_indices[j--]);
         }
     }
 
@@ -168,13 +169,13 @@ int Scene::loadOBJ(const std::string filename)
 
                     // Define new Vertex
                     Vertex newVert;
-                    float scale = 1.0;
+                    float scale = 0.45;
 
                     tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
 
                     tinyobj::real_t vx = attrib.vertices[3 * size_t(idx.vertex_index) + 0] * scale;
-                    tinyobj::real_t vy = attrib.vertices[3 * size_t(idx.vertex_index) + 1] * scale;
-                    tinyobj::real_t vz = attrib.vertices[3 * size_t(idx.vertex_index) + 2] * scale;
+                    tinyobj::real_t vy = -2 + attrib.vertices[3 * size_t(idx.vertex_index) + 1] * scale;
+                    tinyobj::real_t vz = 1 + attrib.vertices[3 * size_t(idx.vertex_index) + 2] * scale;
 
                     newVert.m_pos = glm::vec3(vx, vy, vz);
 
@@ -272,10 +273,6 @@ void Scene::loadFromJSON(const std::string& jsonName)
             newGeom.type = MESH;
             // call load obj here
 
-            // Replace this line:
-            // newGeom.filename = p["FILE"]
-
-            // With this code:
             std::string fileStr = p["FILE"];
             newGeom.filename = new char[fileStr.size() + 1];
             std::strcpy(newGeom.filename, fileStr.c_str());
