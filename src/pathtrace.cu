@@ -88,8 +88,11 @@ static ShadeableIntersection* dev_intersections = NULL;
 // TODO: static variables for device memory, any extra info you need, etc
 // ...
 
-//static Triangle* dev_triangles = NULL;
 static Vertex* dev_vertices = NULL;
+static Triangle* dev_triangles = NULL;
+static BVHNode* dev_nodes = NULL;
+static int* dev_tri_indices = NULL;
+static int* dev_rootNodeIdx = NULL;
 
 void InitDataContainer(GuiDataContainer* imGuiData)
 {
@@ -119,11 +122,20 @@ void pathtraceInit(Scene* scene)
 
     // TODO: initialize any extra device memeory you need
 
-    //cudaMalloc(&dev_triangles, scene->triangles.size() * sizeof(Triangle));
-    //cudaMemcpy(dev_triangles, scene->triangles.data(), scene->triangles.size() * sizeof(Triangle), cudaMemcpyHostToDevice);
-
     cudaMalloc(&dev_vertices, scene->vertices.size() * sizeof(Vertex));
     cudaMemcpy(dev_vertices, scene->vertices.data(), scene->vertices.size() * sizeof(Vertex), cudaMemcpyHostToDevice);
+
+    cudaMalloc(&dev_triangles, scene->triangles.size() * sizeof(Triangle));
+    cudaMemcpy(dev_triangles, scene->triangles.data(), scene->triangles.size() * sizeof(Triangle), cudaMemcpyHostToDevice);
+
+    cudaMalloc(&dev_nodes, scene->bvhTree.size() * sizeof(BVHNode));
+    cudaMemcpy(dev_nodes, scene->bvhTree.data(), scene->bvhTree.size() * sizeof(BVHNode), cudaMemcpyHostToDevice);
+
+    cudaMalloc(&dev_tri_indices, scene->tri_indices.size() * sizeof(int));
+    cudaMemcpy(dev_tri_indices, scene->tri_indices.data(), scene->tri_indices.size() * sizeof(int), cudaMemcpyHostToDevice);
+
+    cudaMalloc(&dev_rootNodeIdx, sizeof(int));
+    cudaMemset(dev_rootNodeIdx, 0, sizeof(int));
 
     checkCUDAError("pathtraceInit");
 }
@@ -137,8 +149,10 @@ void pathtraceFree()
     cudaFree(dev_intersections);
     // TODO: clean up any extra device memory you created
 
-    //cudaFree(dev_triangles);
     cudaFree(dev_vertices);
+    cudaFree(dev_triangles);
+    cudaFree(dev_nodes);
+    cudaFree(dev_tri_indices);
 
     checkCUDAError("pathtraceFree");
 }
@@ -198,7 +212,7 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
             glm::vec2 xi = glm::vec2(u01(rng), u01(rng));
 
             glm::vec2 offset = 2.0f * xi - glm::vec2(1, 1);
-            if (offset.x = 0 && offset.y == 0) {
+            if (offset.x == 0 && offset.y == 0) {
                 sample = glm::vec2(0.f);
             }
 
@@ -261,6 +275,111 @@ __host__ __device__ glm::vec3 barycentricCoords(
 
 }
 
+__host__ __device__ bool IntersectAABB(Ray& ray, glm::vec3 boxMin, glm::vec3 boxMax, float t)
+{
+
+    /*
+    float tx1 = (bmin.x - ray.O.x) / ray.D.x, tx2 = (bmax.x - ray.O.x) / ray.D.x;
+    float tmin = min( tx1, tx2 ), tmax = max( tx1, tx2 );
+
+
+    float ty1 = (bmin.y - ray.O.y) / ray.D.y, ty2 = (bmax.y - ray.O.y) / ray.D.y;
+    tmin = max( tmin, min( ty1, ty2 ) ), tmax = min( tmax, max( ty1, ty2 ) );
+
+    float tz1 = (bmin.z - ray.O.z) / ray.D.z, tz2 = (bmax.z - ray.O.z) / ray.D.z;
+    tmin = max( tmin, min( tz1, tz2 ) ), tmax = min( tmax, max( tz1, tz2 ) );
+    return tmax >= tmin && tmin < ray.t && tmax > 0;
+    
+    */
+    glm::vec3 dir = ray.direction;
+    glm::vec3 origin = ray.origin;
+
+    float tx1 = (boxMin.x - origin.x) / dir.x;
+    float tx2 = (boxMax.x - origin.x) / dir.x;
+    float tmin = fminf(tx1, tx2), tmax = fmaxf(tx1, tx2);
+
+    float ty1 = (boxMin.y - origin.y) / dir.y;
+    float ty2 = (boxMax.y - origin.y) / dir.y;
+
+    tmin = fmaxf(tmin, fminf(ty1, ty2)); tmax = fminf(tmax, fmaxf(ty1, ty2));
+
+    float tz1 = (boxMin.z - origin.z) / dir.z;
+    float tz2 = (boxMax.z - origin.z) / dir.z;
+
+    tmin = fmaxf(tmin, fminf(tz1, tz2)); tmax = fminf(tmax, fmaxf(tz1, tz2));
+
+    return tmax >= tmin && tmin < t && tmax > 0.f;
+
+}
+
+
+__host__ __device__ float IntersectBVH(
+    Ray& ray,
+    const BVHNode* nodes,
+    const Triangle* triangles,
+    const int* tri_indices,
+    int nodeIdx, 
+    float t_max,
+    int triangles_count) 
+{
+
+#if 0
+    BVHNode& node = dev_nodes[nodeIdx];
+    //if (!IntersectAABB(ray, node.aabbMin, node.aabbMax, t)) return;
+
+    if (node.isLeaf()) {
+        for (unsigned int i = 0; i < node.primCount; i++) {
+            Triangle t = dev_triangles[i];
+            glm::vec3 v1 = t.v1.m_pos;
+            glm::vec3 v2 = t.v2.m_pos;
+            glm::vec3 v3 = t.v3.m_pos;
+            glm::vec3 baryCoords;
+            bool hit = glm::intersectRayTriangle(ray.origin, ray.direction, v1, v2, v3, baryCoords);
+            float out_t = baryCoords.z;
+        }
+    }
+    else {
+        IntersectBVH(ray, node.leftChild, t);
+        IntersectBVH(ray, node.leftChild + 1, t);
+    }
+#else
+    float closest_t = FLT_MAX;
+
+    int stack[128];
+    int stack_ptr = 0;
+    stack[stack_ptr++] = 0;
+
+    while (stack_ptr > 0) {
+        int node_idx = stack[--stack_ptr];
+        const BVHNode& node = nodes[node_idx];
+
+        
+        if (!IntersectAABB(ray, node.aabbMin, node.aabbMax, t_max)) {
+            continue;
+        }
+        
+        if (node.isLeaf()) {
+            for (int i = 0; i < node.primCount; i++) {
+                int triIdx = node.firstPrim + i;
+                const Triangle& tri = triangles[triIdx];
+                glm::vec3 baryCoords;
+
+                bool hit = glm::intersectRayTriangle(ray.origin,ray.direction,tri.v1.m_pos, tri.v2.m_pos, tri.v3.m_pos, baryCoords);
+                float out_t = baryCoords.z;
+                if (out_t > 0.0f && out_t < closest_t) {
+                    closest_t = out_t;
+                }
+            }
+        }
+        else {
+            stack[stack_ptr++] = node.leftChild + 1;
+            stack[stack_ptr++] = node.leftChild;
+        }
+    }
+    return (closest_t == FLT_MAX) ? -1.0f : closest_t;
+
+#endif
+}
 
 
 // TODO:
@@ -275,7 +394,11 @@ __global__ void computeIntersections(
     int geoms_size,
     ShadeableIntersection* intersections, 
     Vertex* verts,
-    int vert_size)
+    int vert_size,
+    BVHNode* bvh_nodes,
+    Triangle* triangles,
+    int* tri_indices,
+    int triangles_count)
 {
     int path_index = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -314,8 +437,6 @@ __global__ void computeIntersections(
                 t = meshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, outside, uv, verts, vert_size, t_min);
             }
              */
-    
-
             if (t > 0.0f && t_min > t)
             {
                 t_min = t;
@@ -324,15 +445,15 @@ __global__ void computeIntersections(
                 normal = tmp_normal;
             }
 
-            
             // TODO: add more intersection tests here... triangle? metaball? CSG?
 
             // Compute the minimum t from the intersection tests to determine what
             // scene geometry object was hit first.
 
         }
-        
-        
+
+
+    #if 0
         for (int vertIdx = 0; vertIdx < vert_size; vertIdx += 3)
         {
             Vertex& v1 = verts[vertIdx];
@@ -353,7 +474,16 @@ __global__ void computeIntersections(
                 //tmp_tangent = bary.x * v1.tangent + bary.y * v2.tangent + bary.z * v3.tangent;
             }
         }
-        
+    # else
+        float bvh_t = IntersectBVH(pathSegment.ray, bvh_nodes, triangles, tri_indices, 0, t_min, triangles_count);
+
+        if (bvh_t > 0.0f && bvh_t < t_min) {
+            t_min = bvh_t;
+            hit_geom_index = -2; // Special value for triangle hits
+            intersect_point = pathSegment.ray.origin + pathSegment.ray.direction * bvh_t;
+            // TODO: Get proper normal from triangle
+        }
+    #endif
         
         
         if (hit_geom_index == -1)
@@ -483,12 +613,6 @@ __global__ void shadeDiffuseMaterial(
 
                 pathSegments[idx].color *= materialColor;
 
-
-
-
-
-
-
             }
             // If there was no intersection, color the ray black.
             // Lots of renderers use 4 channel color, RGBA, where A = alpha, often
@@ -609,7 +733,11 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             hst_scene->geoms.size(),
             dev_intersections,
             dev_vertices,
-            (int)hst_scene->vertices.size()
+            (int)hst_scene->vertices.size(),
+            dev_nodes,
+            dev_triangles,
+            dev_tri_indices,
+            hst_scene->triangles.size()
         );
         checkCUDAError("trace one bounce");
         cudaDeviceSynchronize();

@@ -22,20 +22,28 @@ namespace fs = std::filesystem;
 using namespace std;
 using json = nlohmann::json;
 
-Triangle::Triangle(glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, int idx)
-    : pos{ p1,p2,p3 }, index_in_mesh(idx) {}
+
+Triangle::Triangle(Vertex p1, Vertex p2, Vertex p3, int idx)
+    : v1(p1), v2(p2), v3(p3), centroid(0.f), index_in_mesh(idx) {
+}
 
 Vertex::Vertex()
     : m_pos(glm::vec3(0)), m_normal(glm::vec3(0)) {}
 
 Vertex::Vertex(glm::vec3 p, glm::vec3 n, glm::vec2 uv)
-        : m_pos(p), m_normal(n), m_uv(uv) {}
+    : m_pos(p), m_normal(n), m_uv(uv) {}
+
+
 
 Scene::Scene(string filename)
 {
     cout << "Reading scene from " << filename << " ..." << endl;
     cout << " " << endl;
     auto ext = filename.substr(filename.find_last_of('.'));
+    this->vertices.clear();
+    this->triangles.clear();
+    this->tri_indices.clear();
+    this->bvhTree.clear();
     if (ext == ".json")
     {
         loadFromJSON(filename);
@@ -48,7 +56,91 @@ Scene::Scene(string filename)
     }
 }
 
-void Scene::loadOBJ(const std::string filename)
+unsigned int rootNodeIdx = 0;
+
+void Scene::UpdateNodeBounds(unsigned int nodeIdx)
+{
+
+    BVHNode& node = bvhTree[nodeIdx];
+    node.aabbMin = glm::vec3(1e30f);
+    node.aabbMax = glm::vec3(-1e30f);
+    for (unsigned int first = node.firstPrim, i = 0; i < node.primCount; i++) {
+        Triangle& leafTri = this->triangles[first + i];
+        node.aabbMin = glm::min(node.aabbMin, leafTri.v1.m_pos);
+        node.aabbMin = glm::min(node.aabbMin, leafTri.v2.m_pos);
+        node.aabbMin = glm::min(node.aabbMin, leafTri.v3.m_pos);
+
+        node.aabbMax = glm::max(node.aabbMax, leafTri.v1.m_pos);
+        node.aabbMax = glm::max(node.aabbMax, leafTri.v2.m_pos);
+        node.aabbMax = glm::max(node.aabbMax, leafTri.v3.m_pos);
+    }
+}
+
+void Scene::Subdivide(unsigned int nodeIdx)
+{
+    
+
+    BVHNode& node = bvhTree[nodeIdx];
+    if ((node.primCount) <= 2) return;
+    glm::vec3 extent = node.aabbMax - node.aabbMin;
+
+    // Determine the axis and position of the split plane
+    int axis = 0;
+    if (extent.y > extent.x) axis = 1;
+    if (extent.z > extent[axis]) axis = 2;
+    float splitPos = node.aabbMin[axis] + extent[axis] * 0.5f;
+
+    // Split the group of primitives in two halves using the split plane
+    int i = node.firstPrim;
+    int j = i + node.primCount - 1;
+    while (i <= j) 
+    {
+        if (this->triangles[i].centroid[axis] < splitPos) {
+            i++;
+        }
+        else {
+            swap(this->triangles[i], this->triangles[j--]);
+        }
+    }
+
+    // Create child nodes for each half
+    int leftCount = i - node.firstPrim;
+    if (leftCount == 0 || leftCount == node.primCount) return;
+
+    int leftChildIdx = nodesUsed++;
+    int rightChildIdx = nodesUsed++;
+    node.leftChild = leftChildIdx;
+    bvhTree[leftChildIdx].firstPrim = node.firstPrim;
+    bvhTree[leftChildIdx].primCount = leftCount;
+    bvhTree[rightChildIdx].firstPrim = i;
+    bvhTree[rightChildIdx].primCount = node.primCount - leftCount;
+    node.primCount = 0;
+
+    UpdateNodeBounds(leftChildIdx);
+    UpdateNodeBounds(rightChildIdx);
+
+    // Recurse into each of the child nodes.
+    Subdivide(leftChildIdx);
+    Subdivide(rightChildIdx);
+
+}
+
+
+void Scene::BuildBVH(int N)
+{
+    BVHNode& root = bvhTree[rootNodeIdx];
+    root.leftChild = root.rightChild = 0;
+    root.firstPrim = 0, root.primCount = this->triangles.size();
+
+
+    UpdateNodeBounds(rootNodeIdx);
+    Subdivide(rootNodeIdx);
+
+    return;
+}
+
+
+int Scene::loadOBJ(const std::string filename)
 {
     std::filesystem::path file = std::filesystem::current_path().parent_path() / "scenes" / "objs" / filename;
     std::string filepath = file.string();
@@ -62,8 +154,6 @@ void Scene::loadOBJ(const std::string filename)
 
 
     bool result = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filepath.c_str());
-
-     // shapes.size() > 0 temporarily ignores problems with materials
     
     if (result)
     {
@@ -78,7 +168,7 @@ void Scene::loadOBJ(const std::string filename)
 
                     // Define new Vertex
                     Vertex newVert;
-                    float scale = 3.0;
+                    float scale = 1.0;
 
                     tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
 
@@ -115,6 +205,23 @@ void Scene::loadOBJ(const std::string filename)
             }
         }
     } 
+    int vert_count = this->vertices.size() / 3;
+
+    int idx = 0;
+    for (int i = 0; i < vertices.size(); i += 3) {
+        Vertex v1 = vertices[i];
+        Vertex v2 = vertices[i + 1];
+        Vertex v3 = vertices[i + 2];
+
+        Triangle t(v1, v2, v3, idx);
+        t.centroid = (v1.m_pos + v2.m_pos + v3.m_pos) * 0.333f;
+        this->tri_indices.push_back(idx);
+        this->triangles.push_back(t);
+
+        idx++;
+    }
+    bvhTree.resize(2.0 * this->triangles.size() - 1);
+    return vert_count;
 }
 
 
@@ -174,6 +281,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
             std::strcpy(newGeom.filename, fileStr.c_str());
 
             loadOBJ(fileStr);
+            BuildBVH(this->triangles.size());
         }
         else
         {

@@ -107,7 +107,7 @@ __host__ __device__ void scatterRay(
     */
     if (m.hasReflective) {
 
-        // Ideal SPECULAR interaction
+        // Perfectly SPECULAR interaction
 
         glm::vec3 wo = glm::normalize(pathSegment.ray.direction);
         glm::vec3 wi = glm::reflect(wo, normal);
@@ -117,7 +117,7 @@ __host__ __device__ void scatterRay(
         return;
 	}
     else {
-        // Ideal DIFFUSE interaction
+        // Perfectly DIFFUSE interaction
         glm::vec3 wi = calculateRandomDirectionInHemisphere(normal, rng);
 
         pathSegment.ray.origin = intersect + 0.001f * normal;

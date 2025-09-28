@@ -23,34 +23,44 @@ struct Ray
     glm::vec3 direction;
 };
 
+
+struct Vertex
+{
+    glm::vec3 m_pos;
+    glm::vec3 m_normal;
+    glm::vec2 m_uv;
+
+    /*    glm::vec3 m_color;
+
+         */
+
+    Vertex();
+    Vertex(glm::vec3 p, glm::vec3 nor, glm::vec2 uv);
+};
+
 class Triangle {
 public:
-    std::array<glm::vec3, 3> pos;
-    std::array<glm::vec3, 3> nor;
-    std::array<glm::vec3, 3> uv;
+    Vertex v1;
+    Vertex v2;
+    Vertex v3;
+    glm::vec3 centroid;
     int index_in_mesh; // What index in the mesh's vector<Triangles> does this sit at?
 
-public:
-    Triangle(glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, int idx);
+    Triangle(Vertex p1, Vertex p2, Vertex p3, int idx);
     
     glm::vec3 operator[](unsigned int) const;
 
     friend class Mesh;
 };
 
-
-
-struct Vertex
+struct BVHNode 
 {
-    glm::vec3 m_pos; 
-    glm::vec3 m_normal;
-    glm::vec2 m_uv;
-/*    glm::vec3 m_color;  
-    
-     */   
-
-    Vertex();
-    Vertex(glm::vec3 p, glm::vec3 nor, glm::vec2 uv);
+    glm::vec3 aabbMin, aabbMax;
+    unsigned int leftChild, rightChild;
+    __host__ __device__ bool isLeaf() const {
+        return primCount > 0;
+    };
+    unsigned int firstPrim, primCount;
 };
 
 struct Geom
