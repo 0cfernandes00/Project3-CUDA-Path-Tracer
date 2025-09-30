@@ -61,7 +61,7 @@ unsigned int rootNodeIdx = 0;
 
 void Scene::UpdateNodeBounds(unsigned int nodeIdx)
 {
-
+    
     BVHNode& node = bvhTree[nodeIdx];
     node.aabbMin = glm::vec3(1e30f);
     node.aabbMax = glm::vec3(-1e30f);
@@ -75,11 +75,11 @@ void Scene::UpdateNodeBounds(unsigned int nodeIdx)
         node.aabbMax = glm::max(node.aabbMax, leafTri.v2.m_pos);
         node.aabbMax = glm::max(node.aabbMax, leafTri.v3.m_pos);
     }
+
 }
 
 void Scene::Subdivide(unsigned int nodeIdx)
 {
-    
 
     BVHNode& node = bvhTree[nodeIdx];
     if ((node.primCount) <= 2) return;
@@ -96,7 +96,7 @@ void Scene::Subdivide(unsigned int nodeIdx)
     int j = i + node.primCount - 1;
     while (i <= j) 
     {
-        if (this->triangles[tri_indices[i]].centroid[axis] < splitPos) {
+        if (this->triangles[i].centroid[axis] < splitPos) {
             i++;
         }
         else {
@@ -169,13 +169,13 @@ int Scene::loadOBJ(const std::string filename)
 
                     // Define new Vertex
                     Vertex newVert;
-                    float scale = 0.45;
+                    float scale = 2.7;
 
                     tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
 
-                    tinyobj::real_t vx = attrib.vertices[3 * size_t(idx.vertex_index) + 0] * scale;
-                    tinyobj::real_t vy = -2 + attrib.vertices[3 * size_t(idx.vertex_index) + 1] * scale;
-                    tinyobj::real_t vz = 1 + attrib.vertices[3 * size_t(idx.vertex_index) + 2] * scale;
+                    tinyobj::real_t vx = -1 + attrib.vertices[3 * size_t(idx.vertex_index) + 0] * scale;
+                    tinyobj::real_t vy = 4.0 + attrib.vertices[3 * size_t(idx.vertex_index) + 1] * scale;
+                    tinyobj::real_t vz = attrib.vertices[3 * size_t(idx.vertex_index) + 2] * scale;
 
                     newVert.m_pos = glm::vec3(vx, vy, vz);
 
@@ -187,15 +187,14 @@ int Scene::loadOBJ(const std::string filename)
                         // Set vertex position
                         newVert.m_normal = glm::vec3(nx, ny, nz);
                     }
-
-                    /*
+                    //materialId = 
+                    
                     if (idx.texcoord_index >= 0) {
                         tinyobj::real_t tx = attrib.texcoords[2 * size_t(idx.texcoord_index) + 0];
                         tinyobj::real_t ty = attrib.texcoords[2 * size_t(idx.texcoord_index) + 1];
 
                         newVert.m_uv = glm::vec2(tx, ty);
-                    }*/
-
+                    }
 
                     // push_back new vertex to buffer
                     this->vertices.push_back(newVert);

@@ -7,6 +7,8 @@
 #include <thrust/random.h>
 #include <thrust/remove.h>
 #include <thrust/partition.h>
+#include <thrust/extrema.h>
+#include <thrust/device_vector.h>
 
 #include "sceneStructs.h"
 #include "scene.h"
@@ -21,6 +23,7 @@
 #define ERRORCHECK 1
 #define M_PI 3.14159265358979323846
 #define RAY_EPSILON 0.00005f
+#define EPSILON_RR 0.00005f
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
@@ -198,9 +201,8 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
             - cam.up * cam.pixelLength.y * ((float)y + y_rng - (float)cam.resolution.y * 0.5f)
         );
 
-
-        // lens effect Depth of Field
-        
+#if 0
+        // lens effect Depth of Field      
         if (cam.lensRadius > 0) {
             // Sample point on lens
 
@@ -241,7 +243,7 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
             segment.ray.direction = glm::normalize(pFocus - segment.ray.origin);
 
         }
-        
+#endif       
         
 
         segment.pixelIndex = index;
@@ -278,19 +280,6 @@ __host__ __device__ glm::vec3 barycentricCoords(
 __host__ __device__ bool IntersectAABB(Ray& ray, glm::vec3 boxMin, glm::vec3 boxMax, float t)
 {
 
-    /*
-    float tx1 = (bmin.x - ray.O.x) / ray.D.x, tx2 = (bmax.x - ray.O.x) / ray.D.x;
-    float tmin = min( tx1, tx2 ), tmax = max( tx1, tx2 );
-
-
-    float ty1 = (bmin.y - ray.O.y) / ray.D.y, ty2 = (bmax.y - ray.O.y) / ray.D.y;
-    tmin = max( tmin, min( ty1, ty2 ) ), tmax = min( tmax, max( ty1, ty2 ) );
-
-    float tz1 = (bmin.z - ray.O.z) / ray.D.z, tz2 = (bmax.z - ray.O.z) / ray.D.z;
-    tmin = max( tmin, min( tz1, tz2 ) ), tmax = min( tmax, max( tz1, tz2 ) );
-    return tmax >= tmin && tmin < ray.t && tmax > 0;
-    
-    */
     glm::vec3 dir = ray.direction;
     glm::vec3 origin = ray.origin;
 
@@ -325,26 +314,6 @@ __host__ __device__ float IntersectBVH(
     glm::vec3 &normal) 
 {
 
-#if 0
-    BVHNode& node = dev_nodes[nodeIdx];
-    //if (!IntersectAABB(ray, node.aabbMin, node.aabbMax, t)) return;
-
-    if (node.isLeaf()) {
-        for (unsigned int i = 0; i < node.primCount; i++) {
-            Triangle t = dev_triangles[i];
-            glm::vec3 v1 = t.v1.m_pos;
-            glm::vec3 v2 = t.v2.m_pos;
-            glm::vec3 v3 = t.v3.m_pos;
-            glm::vec3 baryCoords;
-            bool hit = glm::intersectRayTriangle(ray.origin, ray.direction, v1, v2, v3, baryCoords);
-            float out_t = baryCoords.z;
-        }
-    }
-    else {
-        IntersectBVH(ray, node.leftChild, t);
-        IntersectBVH(ray, node.leftChild + 1, t);
-    }
-#else
     float closest_t = FLT_MAX;
 
     int stack[128];
@@ -399,9 +368,9 @@ __host__ __device__ float IntersectBVH(
     // Interpolate normals
     normal = glm::normalize(bary.x * v1.m_normal + bary.y * v2.m_normal + bary.z * v3.m_normal); 
 
-    return closest_t;
+    return glm::length(ray.origin - intersectP);
 
-#endif
+
 }
 
 
@@ -459,8 +428,6 @@ __global__ void computeIntersections(
             {
 
                 t = IntersectBVH(pathSegment.ray, bvh_nodes, triangles, tri_indices, 0, t_min, triangles_count, tmp_intersect, tmp_normal);
-
-                //t = meshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, outside, uv, verts, vert_size, t_min);
             }
     
             if (t > 0.0f && t_min > t)
@@ -576,12 +543,12 @@ __global__ void shadeDiffuseMaterial(
     int num_paths,
     ShadeableIntersection* shadeableIntersections,
     PathSegment* pathSegments,
-    Material* materials)
+    Material* materials,
+    bool enableRR)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < num_paths)
     {
-
 
         ShadeableIntersection intersection = shadeableIntersections[idx];
         if (intersection.t > 0.0f) // if the intersection exists...
@@ -630,6 +597,32 @@ __global__ void shadeDiffuseMaterial(
 
                 pathSegments[idx].color *= materialColor;
 
+#if 1       
+                if (enableRR) {
+                    // find the path's maximum component output
+                    float lMax = glm::max(pathSegments[idx].color.r, pathSegments[idx].color.g);
+                    lMax = glm::max(lMax, pathSegments[idx].color.b);
+
+                    // set the termination probability
+                    thrust::uniform_real_distribution<float> u25(0,0.25);
+                    float probStart = u25(rng);
+
+                    float pTerm = (probStart > 1.0f - lMax) ? probStart : 1.0f - lMax;
+                    float probSurvive = 1.0f - pTerm;
+
+                    float xi = u01(rng);
+
+                    // Roll the dice
+                    if (xi < pTerm) {
+                        // terminate ray
+                        pathSegments[idx].remainingBounces = 0;
+                        return;
+                    } else {
+                        pathSegments[idx].color /= probSurvive;
+                    }
+                }
+#endif 
+
             }
             // If there was no intersection, color the ray black.
             // Lots of renderers use 4 channel color, RGBA, where A = alpha, often
@@ -639,6 +632,8 @@ __global__ void shadeDiffuseMaterial(
         else {
             pathSegments[idx].color = glm::vec3(0.0f);
         }
+
+      
     }
 }
 
@@ -691,6 +686,8 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
     // 1D block for path tracing
     const int blockSize1d = 128;
+
+    bool enableRR = false;
 
     ///////////////////////////////////////////////////////////////////////////
 
@@ -784,7 +781,8 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 		// shuffle path segments to be contiguous in memory and sort by material
 		thrust::sort_by_key(thrust::device, dev_intersections, dev_intersections + num_paths, dev_paths, compareMatId());
 
-
+        // Russian Roulette Termination logic
+        if (depth > 4) enableRR = true;
         
         // shading directly in one big kernel
         shadeDiffuseMaterial<<<numblocksPathSegmentTracing, blockSize1d>>>(
@@ -792,7 +790,8 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             num_paths,
             dev_intersections,
             dev_paths,
-            dev_materials
+            dev_materials,
+            enableRR
 		);
 
         //TODO: Stream compact away all of the terminated paths.
@@ -800,8 +799,8 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 //     cousins.
         PathSegment* dev_path_end = thrust::partition(thrust::device, dev_paths, dev_paths + num_paths, usefulPath());
         num_paths = dev_path_end - dev_paths;
-        
 
+        
         if (num_paths == 0 || depth >= traceDepth) iterationComplete = true; // TODO: should be based off stream compaction results.
         
 

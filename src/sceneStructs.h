@@ -30,9 +30,7 @@ struct Vertex
     glm::vec3 m_normal;
     glm::vec2 m_uv;
 
-    /*    glm::vec3 m_color;
-
-         */
+    /*    glm::vec3 m_color; */
 
     Vertex();
     Vertex(glm::vec3 p, glm::vec3 nor, glm::vec2 uv);
@@ -64,6 +62,41 @@ struct BVHNode
     unsigned int firstPrim, primCount;
 };
 
+/*
+class Texture {
+public:
+    Texture(OpenGLContext* context, int arrayIdx, int associatedTexSlot);
+    virtual ~Texture();
+
+    virtual void create(const char* texturePath, bool wrap);
+    virtual void create(bool wrap) = 0;
+    void destroy();
+    void bind(GLuint texSlot);
+
+    bool m_isCreated;
+
+    int m_uniformArrayIndex; // Which sampler2D in the shader will read from this texture
+    int m_associatedTextureSlot; // Which texture slot this will be put in
+
+
+};
+
+class Texture2D : public Texture {
+public:
+    Texture2D(OpenGLContext* context, int arrayIdx, int associatedTexSlot);
+    ~Texture2D();
+
+    void create(const char* texturePath, bool wrap) override;
+    void create(bool wrap) override;
+};
+
+struct Texture {
+    float texels[];
+
+};
+*/
+
+
 struct Geom
 {
     enum GeomType type;
@@ -92,6 +125,7 @@ struct Material
     float hasRefractive;
     float indexOfRefraction;
     float emittance;
+    //Texture albedoTex;
 };
 
 struct Camera
@@ -133,4 +167,5 @@ struct ShadeableIntersection
   float t;
   glm::vec3 surfaceNormal;
   int materialId;
+  glm::vec2 uv;
 };
