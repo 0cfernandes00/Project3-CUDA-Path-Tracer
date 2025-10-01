@@ -323,7 +323,8 @@ __host__ __device__ float IntersectBVH(
     float t_max,
     int triangles_count,
     glm::vec3 &intersectP,
-    glm::vec3 &normal) 
+    glm::vec3 &normal,
+    glm::vec2 &uv) 
 {
 
     float closest_t = FLT_MAX;
@@ -379,6 +380,8 @@ __host__ __device__ float IntersectBVH(
 
     // Interpolate normals
     normal = glm::normalize(bary.x * v1.m_normal + bary.y * v2.m_normal + bary.z * v3.m_normal); 
+    uv = bary.x * v1.m_uv + bary.y * v2.m_uv + bary.z * v3.m_uv; // Interpolate uv
+
 
     return glm::length(ray.origin - intersectP);
 
@@ -440,7 +443,7 @@ __global__ void computeIntersections(
             else if (geom.type == MESH)
             {
                 if (enableBVH) {
-                    t = IntersectBVH(pathSegment.ray, bvh_nodes, triangles, tri_indices, 0, t_min, triangles_count, tmp_intersect, tmp_normal);
+                    t = IntersectBVH(pathSegment.ray, bvh_nodes, triangles, tri_indices, 0, t_min, triangles_count, tmp_intersect, tmp_normal, uv);
                 }
                 else {
                     obj_hit = i;
@@ -597,11 +600,11 @@ __global__ void shadeDiffuseMaterial(
                 glm::vec2 uv = intersection.uv;
 
                 int x = int(glm::fract(uv.x) * (float)tmp.width);
-                int y = int(glm::fract(1.0 - uv.y) * (float)tmp.width);
+                int y = int(glm::fract(1.0 - uv.y) * (float)tmp.height);
 
-                int idx = startPixel + y * tmp.width + x;
+                int texIdx = startPixel + y * tmp.width + x;
 
-                materialColor = glm::vec3(texels[idx]);
+                materialColor = glm::vec3(texels[texIdx]);
                 
             }
             material.color = materialColor;
@@ -638,7 +641,7 @@ __global__ void shadeDiffuseMaterial(
                     }
                     */
 
-#if 1       
+      
                 if (enableRR) {
                     // find the path's maximum component output
                     float lMax = glm::max(pathSegments[idx].color.r, pathSegments[idx].color.g);
@@ -662,7 +665,7 @@ __global__ void shadeDiffuseMaterial(
                         pathSegments[idx].color /= probSurvive;
                     }
                 }
-#endif 
+
 
             }
             // If there was no intersection, color the ray black.
