@@ -50,6 +50,7 @@ void checkCUDAErrorFn(const char* msg, const char* file, int line)
 #endif // ERRORCHECK
 }
 
+
 __host__ __device__
 thrust::default_random_engine makeSeededRandomEngine(int iter, int index, int depth)
 {
@@ -96,6 +97,8 @@ static Triangle* dev_triangles = NULL;
 static BVHNode* dev_nodes = NULL;
 static int* dev_tri_indices = NULL;
 static int* dev_rootNodeIdx = NULL;
+static Texture* dev_textures = NULL;
+static glm::vec4* dev_texels = NULL;
 
 void InitDataContainer(GuiDataContainer* imGuiData)
 {
@@ -140,6 +143,12 @@ void pathtraceInit(Scene* scene)
     cudaMalloc(&dev_rootNodeIdx, sizeof(int));
     cudaMemset(dev_rootNodeIdx, 0, sizeof(int));
 
+    cudaMalloc(&dev_textures, scene->textures.size() * sizeof(Texture));
+    cudaMemcpy(dev_textures, scene->textures.data(), scene->textures.size() * sizeof(Texture), cudaMemcpyHostToDevice);
+
+    cudaMalloc(&dev_texels, scene->texels.size() * sizeof(glm::vec4));
+    cudaMemcpy(dev_texels, scene->texels.data(), scene->texels.size() * sizeof(glm::vec4), cudaMemcpyHostToDevice);
+
     checkCUDAError("pathtraceInit");
 }
 
@@ -156,6 +165,9 @@ void pathtraceFree()
     cudaFree(dev_triangles);
     cudaFree(dev_nodes);
     cudaFree(dev_tri_indices);
+    cudaFree(dev_rootNodeIdx);
+    cudaFree(dev_textures);
+    cudaFree(dev_texels);
 
     checkCUDAError("pathtraceFree");
 }
@@ -390,7 +402,8 @@ __global__ void computeIntersections(
     BVHNode* bvh_nodes,
     Triangle* triangles,
     int* tri_indices,
-    int triangles_count)
+    int triangles_count,
+    bool enableBVH)
 {
     int path_index = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -426,8 +439,12 @@ __global__ void computeIntersections(
             } 
             else if (geom.type == MESH)
             {
-
-                t = IntersectBVH(pathSegment.ray, bvh_nodes, triangles, tri_indices, 0, t_min, triangles_count, tmp_intersect, tmp_normal);
+                if (enableBVH) {
+                    t = IntersectBVH(pathSegment.ray, bvh_nodes, triangles, tri_indices, 0, t_min, triangles_count, tmp_intersect, tmp_normal);
+                }
+                else {
+                    obj_hit = i;
+                }
             }
     
             if (t > 0.0f && t_min > t)
@@ -446,29 +463,30 @@ __global__ void computeIntersections(
         }
 
 
-    #if 0
-        for (int vertIdx = 0; vertIdx < vert_size; vertIdx += 3)
-        {
-            Vertex& v1 = verts[vertIdx];
-            Vertex& v2 = verts[vertIdx + 1];
-            Vertex& v3 = verts[vertIdx + 2];
-            glm::vec3 baryCoords;
-            bool hit = glm::intersectRayTriangle(pathSegment.ray.origin, pathSegment.ray.direction, v1.m_pos, v2.m_pos, v3.m_pos, baryCoords);
-            t = baryCoords.z;
-
-            if (t > 0.0f && t_min > t)
+        if (!enableBVH) {
+            for (int vertIdx = 0; vertIdx < vert_size; vertIdx += 3)
             {
-                t_min = t;
-                //mat_index = v1.materialid;
-                glm::vec3 p = pathSegment.ray.origin + (pathSegment.ray.direction * t);
-                glm::vec3 bary = barycentricCoords(p, v1.m_pos, v2.m_pos, v3.m_pos); // Calculate barycentric coordinates
-                normal = glm::normalize(bary.x * v1.m_normal + bary.y * v2.m_normal + bary.z * v3.m_normal); // Interpolate normals
-                uv = bary.x * v1.m_uv + bary.y * v2.m_uv + bary.z * v3.m_uv; // Interpolate uv
-                //tmp_tangent = bary.x * v1.tangent + bary.y * v2.tangent + bary.z * v3.tangent;
+                Vertex& v1 = verts[vertIdx];
+                Vertex& v2 = verts[vertIdx + 1];
+                Vertex& v3 = verts[vertIdx + 2];
+                glm::vec3 baryCoords;
+                bool hit = glm::intersectRayTriangle(pathSegment.ray.origin, pathSegment.ray.direction, v1.m_pos, v2.m_pos, v3.m_pos, baryCoords);
+                t = baryCoords.z;
+
+                if (hit && t > 0.0f && t_min > t)
+                {
+                    t_min = t;
+                    hit_geom_index = obj_hit;
+                    intersect_point = pathSegment.ray.origin + (pathSegment.ray.direction * t_min);
+
+                    glm::vec3 bary = barycentricCoords(intersect_point, v1.m_pos, v2.m_pos, v3.m_pos); // Calculate barycentric coordinates
+                    normal = glm::normalize(bary.x * v1.m_normal + bary.y * v2.m_normal + bary.z * v3.m_normal); // Interpolate normals
+                    uv = bary.x * v1.m_uv + bary.y * v2.m_uv + bary.z * v3.m_uv; // Interpolate uv
+                    //tmp_tangent = bary.x * v1.tangent + bary.y * v2.tangent + bary.z * v3.tangent;
+                }
             }
+
         }
-    #endif
-        
         
         if (hit_geom_index == -1)
         {
@@ -480,6 +498,8 @@ __global__ void computeIntersections(
             intersections[path_index].t = t_min;
             intersections[path_index].materialId = geoms[hit_geom_index].materialid;
             intersections[path_index].surfaceNormal = normal;
+            intersections[path_index].surfaceUVCoord = uv;
+
         }
     }
 }
@@ -544,7 +564,9 @@ __global__ void shadeDiffuseMaterial(
     ShadeableIntersection* shadeableIntersections,
     PathSegment* pathSegments,
     Material* materials,
-    bool enableRR)
+    bool enableRR,
+    Texture* textures,
+    glm::vec4* texels)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < num_paths)
@@ -566,17 +588,35 @@ __global__ void shadeDiffuseMaterial(
                 return;
 			}
 
+            if (material.diffuseTextureID != -1) {
+
+                // read from texture
+
+                Texture tmp = textures[material.diffuseTextureID];
+                int startPixel = tmp.startPixelTex;
+                glm::vec2 uv = intersection.uv;
+
+                int x = int(glm::fract(uv.x) * (float)tmp.width);
+                int y = int(glm::fract(1.0 - uv.y) * (float)tmp.width);
+
+                int idx = startPixel + y * tmp.width + x;
+
+                materialColor = glm::vec3(texels[idx]);
+                
+            }
+            material.color = materialColor;
+
             // If the material indicates that the object was a light, "light" the ray
             if (material.emittance > 0.0f) {
                 pathSegments[idx].color *= (materialColor * material.emittance);
 				pathSegments[idx].remainingBounces = 0; // Terminate this path
             }
+
+
             // Otherwise, do some pseudo-lighting computation. This is actually more
             // like what you would expect from shading in a rasterizer like OpenGL.
             // TODO: replace this! you should be able to start with basically a one-liner
             else {
-
-
 
 				// generate new ray direction with cosine-weighted hemisphere sampling
 				glm::vec3 normal = intersection.surfaceNormal;
@@ -584,18 +624,19 @@ __global__ void shadeDiffuseMaterial(
                 //PathSegment& pathSegment, glm::vec3 intersect, glm::vec3 normal, const Material& m, thrust::default_random_engine& rng)
                 scatterRay(pathSegments[idx], pathSegments[idx].ray.origin + pathSegments[idx].ray.direction * intersection.t, normal, material, rng);
 
-
-				glm::vec3 wiW = pathSegments[idx].ray.direction;
-
-                float INV_PI = 1 / M_PI;
-                float pdf;
-				float cosTheta = glm::dot(wiW, normal);
-				if (cosTheta <= 0.0f) { // outside the hemisphere
-                    //pathSegments[idx].remainingBounces = 0; // Terminate this path
-                    //return;
-                }
-
                 pathSegments[idx].color *= materialColor;
+
+                    /*
+				    glm::vec3 wiW = pathSegments[idx].ray.direction;
+
+                    float INV_PI = 1 / M_PI;
+                    float pdf;
+				    float cosTheta = glm::dot(wiW, normal);
+				    if (cosTheta <= 0.0f) { // outside the hemisphere
+                        //pathSegments[idx].remainingBounces = 0; // Terminate this path
+                        //return;
+                    }
+                    */
 
 #if 1       
                 if (enableRR) {
@@ -672,7 +713,7 @@ struct usefulPath
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
  * of memory management
  */
-void pathtrace(uchar4* pbo, int frame, int iter)
+void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russianRoulette, bool enableBVH)
 {
     const int traceDepth = hst_scene->state.traceDepth;
     const Camera& cam = hst_scene->state.camera;
@@ -751,7 +792,8 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             dev_nodes,
             dev_triangles,
             dev_tri_indices,
-            hst_scene->triangles.size()
+            hst_scene->triangles.size(),
+            enableBVH
         );
         checkCUDAError("trace one bounce");
         cudaDeviceSynchronize();
@@ -777,12 +819,17 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
         // sort by material before performing shading and sampling
         // you can use thrust for this
-        
-		// shuffle path segments to be contiguous in memory and sort by material
-		thrust::sort_by_key(thrust::device, dev_intersections, dev_intersections + num_paths, dev_paths, compareMatId());
 
-        // Russian Roulette Termination logic
-        if (depth > 4) enableRR = true;
+        if (materialSort) {
+
+            // shuffle path segments to be contiguous in memory and sort by material
+            thrust::sort_by_key(thrust::device, dev_intersections, dev_intersections + num_paths, dev_paths, compareMatId());
+        }
+
+        if (russianRoulette) {
+            // Russian Roulette Termination logic
+            if (depth > 4) enableRR = true;
+        }
         
         // shading directly in one big kernel
         shadeDiffuseMaterial<<<numblocksPathSegmentTracing, blockSize1d>>>(
@@ -791,12 +838,14 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             dev_intersections,
             dev_paths,
             dev_materials,
-            enableRR
+            enableRR,
+            dev_textures,
+            dev_texels
 		);
 
         //TODO: Stream compact away all of the terminated paths.
-//     You may use either your implementation or `thrust::remove_if` or its
-//     cousins.
+        // You may use either your implementation or `thrust::remove_if` or its
+        // cousins.
         PathSegment* dev_path_end = thrust::partition(thrust::device, dev_paths, dev_paths + num_paths, usefulPath());
         num_paths = dev_path_end - dev_paths;
 

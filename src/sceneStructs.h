@@ -49,7 +49,7 @@ public:
     
     glm::vec3 operator[](unsigned int) const;
 
-    friend class Mesh;
+    //friend class Mesh;
 };
 
 struct BVHNode 
@@ -62,25 +62,17 @@ struct BVHNode
     unsigned int firstPrim, primCount;
 };
 
-/*
+
 class Texture {
 public:
-    Texture(OpenGLContext* context, int arrayIdx, int associatedTexSlot);
-    virtual ~Texture();
-
-    virtual void create(const char* texturePath, bool wrap);
-    virtual void create(bool wrap) = 0;
-    void destroy();
-    void bind(GLuint texSlot);
-
-    bool m_isCreated;
-
-    int m_uniformArrayIndex; // Which sampler2D in the shader will read from this texture
-    int m_associatedTextureSlot; // Which texture slot this will be put in
-
-
+    float width;
+    float height;
+    int startPixelTex;
+    
+    //unsigned char* pixelData;
 };
 
+/*
 class Texture2D : public Texture {
 public:
     Texture2D(OpenGLContext* context, int arrayIdx, int associatedTexSlot);
@@ -125,7 +117,7 @@ struct Material
     float hasRefractive;
     float indexOfRefraction;
     float emittance;
-    //Texture albedoTex;
+    int diffuseTextureID;
 };
 
 struct Camera
@@ -168,4 +160,5 @@ struct ShadeableIntersection
   glm::vec3 surfaceNormal;
   int materialId;
   glm::vec2 uv;
+  glm::vec2 surfaceUVCoord;
 };

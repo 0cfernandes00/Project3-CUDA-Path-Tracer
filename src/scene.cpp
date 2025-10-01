@@ -10,6 +10,7 @@
 #include <iostream>
 #include <string>
 #include <unordered_map>
+#include <stb_image.h>
 
 #include "tiny_obj_loader.h"
 
@@ -140,21 +141,64 @@ void Scene::BuildBVH(int N)
     return;
 }
 
+void Scene::loadTexture(const std::string filename) {
+
+    std::filesystem::path file = std::filesystem::current_path().parent_path() / "scenes" / "objs" / filename;
+    std::string filepath = file.string();
+    
+    char* fileNew = new char[filepath.size() + 1];
+    std::strcpy(fileNew, filepath.c_str());
+
+
+    Texture diffuse;
+    int width, height, channels;
+    unsigned char* pixelData;
+
+    float* data = stbi_loadf(fileNew, &width, &height, NULL, 4);
+
+    if (data == NULL) {
+        std::cout << "error reading image file" << std::endl;
+    }
+
+ 
+    diffuse.width = width;
+    diffuse.height = height;
+    diffuse.startPixelTex = this->texels.size();
+    //pixelData = data;
+
+    this->textures.push_back(diffuse);
+
+    for (int i = 0; i < width * height; i++) {
+        glm::vec4 pixel;
+        for (int j = 0; j < 4; j++) {
+            pixel[j] = data[i * 4 + j];
+        }
+        this->texels.push_back(pixel);
+    }
+
+
+    stbi_image_free(data);
+
+    return;
+
+}
 
 int Scene::loadOBJ(const std::string filename)
 {
     std::filesystem::path file = std::filesystem::current_path().parent_path() / "scenes" / "objs" / filename;
     std::string filepath = file.string();
+    std::string basedir = file.parent_path().string() + "\\";
 
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes; 
     std::vector<tinyobj::material_t> materials;
 
+
     std::string warn;
     std::string err;
 
 
-    bool result = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filepath.c_str());
+    bool result = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filepath.c_str(), basedir.c_str());
     
     if (result)
     {
@@ -169,12 +213,12 @@ int Scene::loadOBJ(const std::string filename)
 
                     // Define new Vertex
                     Vertex newVert;
-                    float scale = 2.7;
+                    float scale = 2;
 
                     tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
 
-                    tinyobj::real_t vx = -1 + attrib.vertices[3 * size_t(idx.vertex_index) + 0] * scale;
-                    tinyobj::real_t vy = 4.0 + attrib.vertices[3 * size_t(idx.vertex_index) + 1] * scale;
+                    tinyobj::real_t vx =  attrib.vertices[3 * size_t(idx.vertex_index) + 0] * scale;
+                    tinyobj::real_t vy = 3.5 + attrib.vertices[3 * size_t(idx.vertex_index) + 1] * scale;
                     tinyobj::real_t vz = attrib.vertices[3 * size_t(idx.vertex_index) + 2] * scale;
 
                     newVert.m_pos = glm::vec3(vx, vy, vz);
@@ -187,7 +231,6 @@ int Scene::loadOBJ(const std::string filename)
                         // Set vertex position
                         newVert.m_normal = glm::vec3(nx, ny, nz);
                     }
-                    //materialId = 
                     
                     if (idx.texcoord_index >= 0) {
                         tinyobj::real_t tx = attrib.texcoords[2 * size_t(idx.texcoord_index) + 0];
@@ -233,9 +276,14 @@ void Scene::loadFromJSON(const std::string& jsonName)
     std::unordered_map<std::string, uint32_t> MatNameToID;
     for (const auto& item : materialsData.items())
     {
+        // example : "diffuse green"
         const auto& name = item.key();
         const auto& p = item.value();
         Material newMaterial{};
+
+        // set default diffuse Texture map to -1
+        newMaterial.diffuseTextureID = -1;
+
         // TODO: handle materials loading differently
         if (p["TYPE"] == "Diffuse")
         {
@@ -256,6 +304,13 @@ void Scene::loadFromJSON(const std::string& jsonName)
             newMaterial.hasRefractive = 1.f;
             
         }
+        else if (p["TYPE"] == "image") 
+        {
+            const std::string fileTex = p["TEXTURE"];
+            newMaterial.diffuseTextureID = this->textures.size();
+            loadTexture(fileTex);
+        }
+
         MatNameToID[name] = materials.size();
         materials.emplace_back(newMaterial);
     }
@@ -283,6 +338,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
         {
             newGeom.type = SPHERE;
         }
+
         newGeom.materialid = MatNameToID[p["MATERIAL"]];
         const auto& trans = p["TRANS"];
         const auto& rotat = p["ROTAT"];

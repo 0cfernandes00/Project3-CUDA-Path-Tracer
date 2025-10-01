@@ -46,6 +46,13 @@ GuiDataContainer* guiData;
 RenderState* renderState;
 int iteration;
 
+// GUI booleans
+bool materialSorting = true;
+bool russianRoulette = true;
+bool depthOField = false;
+bool enableBVH = false;
+
+
 int width;
 int height;
 
@@ -264,17 +271,35 @@ void RenderImGui()
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    bool show_demo_window = true;
+
     bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
     static float f = 0.0f;
     static int counter = 0;
 
+    ImGui::SetNextWindowSize(ImVec2(600, 600));
+
+
+    bool prevMatSort = materialSorting;
+    bool prevRR = russianRoulette;
+    bool prevBVH = enableBVH;
+
+
     ImGui::Begin("Path Tracer Analytics");                  // Create a window called "Hello, world!" and append into it.
+
     
     // LOOK: Un-Comment to check the output window and usage
     //ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
-    //ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
+    ImGui::Checkbox("Material Sorting", &materialSorting);      // Edit bools storing our window open/close state
+    ImGui::Checkbox("Russisan Roulette Path Term", &russianRoulette);      // Edit bools storing our window open/close state
+    ImGui::Checkbox("Enable BVH", &enableBVH);
+    
+
+    // check if any booleans flipped and trigger rerender
+    if (materialSorting != prevMatSort) camchanged = true;
+    if (russianRoulette != prevRR) camchanged = true;
+    if (enableBVH != prevBVH) camchanged = true;
+
     //ImGui::Checkbox("Another Window", &show_another_window);
 
     //ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
@@ -458,7 +483,7 @@ void runCuda()
 
         // execute the kernel
         int frame = 0;
-        pathtrace(pbo_dptr, frame, iteration);
+        pathtrace(pbo_dptr, frame, iteration, materialSorting, russianRoulette, enableBVH);
 
         // unmap buffer object
         cudaGLUnmapBufferObject(pbo);
