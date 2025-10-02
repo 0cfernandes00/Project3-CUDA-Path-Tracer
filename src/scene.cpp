@@ -160,11 +160,9 @@ void Scene::loadTexture(const std::string filename) {
         std::cout << "error reading image file" << std::endl;
     }
 
- 
     diffuse.width = width;
     diffuse.height = height;
     diffuse.startPixelTex = this->texels.size();
-    //pixelData = data;
 
     this->textures.push_back(diffuse);
 
