@@ -12,7 +12,7 @@ CUDA Path Tracer
 The goal of this project was to implement a CUDA-based path tracer. The base code was provided which implemented the openGL interop, previewing and saving images, as well as loading a scene description file.
 
 Core Features:
-- [Shading](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#shading)
+- [Shading][(https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#shading)]
 - [Stream Compaction](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#stream-compaction)
 - [Material Sorting](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#material-sorting)
 - [Anti-Aliasing](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#anti-aliasing)
