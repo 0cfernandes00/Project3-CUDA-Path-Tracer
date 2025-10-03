@@ -114,7 +114,7 @@ __host__ __device__ void scatterRay(
         pathSegment.ray.origin = intersect + 0.001f * normal;
         pathSegment.ray.direction = glm::normalize(wi);
         pathSegment.remainingBounces--;
-        return;
+        //return;
 	}
     else {
         // Perfectly DIFFUSE interaction
@@ -123,7 +123,6 @@ __host__ __device__ void scatterRay(
         pathSegment.ray.origin = intersect + 0.001f * normal;
         pathSegment.ray.direction = glm::normalize(wi);
 
-        pathSegment.remainingBounces--;
         return;
     }
     

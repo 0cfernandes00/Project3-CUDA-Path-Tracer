@@ -43,13 +43,13 @@ public:
     Vertex v3;
     glm::vec3 centroid;
     int index_in_mesh; // What index in the mesh's vector<Triangles> does this sit at?
+    int materialId;
 
     Triangle();
     Triangle(Vertex p1, Vertex p2, Vertex p3, int idx);
     
     glm::vec3 operator[](unsigned int) const;
 
-    //friend class Mesh;
 };
 
 struct BVHNode 
@@ -69,24 +69,7 @@ public:
     float height;
     int startPixelTex;
     
-    //unsigned char* pixelData;
 };
-
-/*
-class Texture2D : public Texture {
-public:
-    Texture2D(OpenGLContext* context, int arrayIdx, int associatedTexSlot);
-    ~Texture2D();
-
-    void create(const char* texturePath, bool wrap) override;
-    void create(bool wrap) override;
-};
-
-struct Texture {
-    float texels[];
-
-};
-*/
 
 
 struct Geom
@@ -118,6 +101,8 @@ struct Material
     float indexOfRefraction;
     float emittance;
     int diffuseTextureID;
+    int width;
+    int height;
 };
 
 struct Camera

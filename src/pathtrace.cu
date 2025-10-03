@@ -300,7 +300,7 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
     }
 }
 
-
+#if 0
 __host__ __device__ glm::vec3 barycentricCoords(
     glm::vec3 p,
     glm::vec3 v0,
@@ -323,8 +323,24 @@ __host__ __device__ glm::vec3 barycentricCoords(
     float s3 = glm::length(glm::cross(sideA, sideB)) / s;
 
     return glm::vec3(s1, s2, s3);
-
 }
+#else
+__host__ __device__ glm::vec3 barycentricCoords(glm::vec3 p, glm::vec3 a, glm::vec3 b, glm::vec3 c) {
+    glm::vec3 v0 = b - a, v1 = c - a, v2 = p - a;
+    float d00 = glm::dot(v0, v0);
+    float d01 = glm::dot(v0, v1);
+    float d11 = glm::dot(v1, v1);
+    float d20 = glm::dot(v2, v0);
+    float d21 = glm::dot(v2, v1);
+    float denom = d00 * d11 - d01 * d01;
+
+    float v = (d11 * d20 - d01 * d21) / denom;
+    float w = (d00 * d21 - d01 * d20) / denom;
+    float u = 1.0f - v - w;
+
+    return glm::vec3(u, v, w);
+}
+#endif
 
 __host__ __device__ bool IntersectAABB(Ray& ray, glm::vec3 boxMin, glm::vec3 boxMax, float t)
 {
@@ -539,7 +555,7 @@ __global__ void computeIntersections(
             intersections[path_index].materialId = geoms[hit_geom_index].materialid;
             intersections[path_index].surfaceNormal = normal;
             intersections[path_index].surfaceUVCoord = uv;
-
+            intersections[path_index].uv = uv;
         }
     }
 }
@@ -621,6 +637,7 @@ __global__ void shadeDiffuseMaterial(
         ShadeableIntersection intersection = shadeableIntersections[idx];
         if (intersection.t > 0.0f) // if the intersection exists...
         {
+
             // Set up the RNG
             // LOOK: this is how you use thrust's RNG! Please look at
             // makeSeededRandomEngine as well.
@@ -634,7 +651,31 @@ __global__ void shadeDiffuseMaterial(
                 return;
 			}
 
+            int texID = materials[intersection.materialId].diffuseTextureID;
 
+            if (texID >= 0) {
+                Texture tex = textures[texID];
+
+                int iu = glm::clamp(float(intersection.uv.x * tex.width), 0.f, tex.width - 1);
+                int iv = glm::clamp(float(intersection.uv.y * tex.height), 0.f, tex.height - 1);
+
+                int idxTex = tex.startPixelTex + iv * tex.width + iu;
+                glm::vec4 texel = texels[idxTex];
+                glm::vec3 texColor = glm::vec3(texel.x, texel.y, texel.z);
+
+                pathSegments[idx].color = texColor;
+                pathSegments[idx].remainingBounces = 0;
+                //return;
+
+                materialColor = texColor;
+                //material.color = texColor;
+                material.color = materialColor;
+                // continue — do NOT return here
+
+
+            }
+            
+#if 0
             if (material.diffuseTextureID != -1) {
 
                 // read from texture
@@ -643,22 +684,28 @@ __global__ void shadeDiffuseMaterial(
                 int startPixel = tmp.startPixelTex;
                 glm::vec2 uv = intersection.uv;
 
-                int x = int(glm::fract(uv.x) * (float)tmp.width);
-                int y = int(glm::fract(1.0 - uv.y) * (float)tmp.height);
+                //int x = int(glm::fract(uv.x) * (float)tmp.width);
+                //int y = int(glm::fract(1.0 - uv.y) * (float)tmp.height);
 
+                int x = glm::min(float(glm::fract(uv.x) * tmp.width), tmp.width - 1.f);
+                int y = glm::min(float(glm::fract(1.0f - uv.y) * tmp.height), tmp.height - 1.f);
+                
                 int texIdx = startPixel + y * tmp.width + x;
 
-                materialColor = glm::vec3(texels[texIdx]);
-                
+                //materialColor = glm::vec3(texels[texIdx]);
+                glm::vec4 texel = texels[texIdx];
+                materialColor = glm::vec3(texel.x, texel.y, texel.z);
+                //materialColor = glm::vec3(uv.x, uv.y, 0.0f);
+
             }
             material.color = materialColor;
+#endif           
 
             // If the material indicates that the object was a light, "light" the ray
             if (material.emittance > 0.0f) {
                 pathSegments[idx].color *= (materialColor * material.emittance);
 				pathSegments[idx].remainingBounces = 0; // Terminate this path
             }
-
 
             // Otherwise, do some pseudo-lighting computation. This is actually more
             // like what you would expect from shading in a rasterizer like OpenGL.
@@ -668,28 +715,43 @@ __global__ void shadeDiffuseMaterial(
 				// generate new ray direction with cosine-weighted hemisphere sampling
 				glm::vec3 normal = intersection.surfaceNormal;
 
-                //PathSegment& pathSegment, glm::vec3 intersect, glm::vec3 normal, const Material& m, thrust::default_random_engine& rng)
-                scatterRay(pathSegments[idx], pathSegments[idx].ray.origin + pathSegments[idx].ray.direction * intersection.t, normal, material, rng);
+                if (texID >= 0) {
+                    Texture tex = textures[texID];
 
+                    int iu = glm::clamp(float(intersection.uv.x * tex.width), 0.f, tex.width - 1);
+                    int iv = glm::clamp(float(intersection.uv.y * tex.height), 0.f, tex.height - 1);
+
+                    int idxTex = tex.startPixelTex + iv * tex.width + iu;
+                    glm::vec4 texel = texels[idxTex];
+                    glm::vec3 texColor = glm::vec3(texel.x, texel.y, texel.z);
+
+                    pathSegments[idx].color = texColor;
+                    pathSegments[idx].remainingBounces = 0;
+                    //return;
+
+                    materialColor = texColor;
+                    //material.color = texColor;
+                    material.color = materialColor;
+                    // continue — do NOT return here
+
+
+                }
+                else {
+                    scatterRay(pathSegments[idx], pathSegments[idx].ray.origin + pathSegments[idx].ray.direction * intersection.t, normal, material, rng);
+                }
+
+                
                 pathSegments[idx].color *= materialColor;
-
-                    /*
-				    glm::vec3 wiW = pathSegments[idx].ray.direction;
-                    F
-                    float INV_PI = 1 / M_PI;
-                    float pdf;
-				    float cosTheta = glm::dot(wiW, normal);
-				    if (cosTheta <= 0.0f) { // outside the hemisphere
-                        //pathSegments[idx].remainingBounces = 0; // Terminate this path
-                        //return;
-                    }
-                    */
+                pathSegments[idx].remainingBounces--;
+                
 
 
+                
+#if DENOISE
+               
                 dev_albedoImg[pathSegments[idx].pixelIndex] = pathSegments[idx].color;
                 dev_normalsImg[pathSegments[idx].pixelIndex] = intersection.surfaceNormal;
 
-      
                 if (enableRR) {
                     // find the path's maximum component output
                     float lMax = glm::max(pathSegments[idx].color.r, pathSegments[idx].color.g);
@@ -713,9 +775,10 @@ __global__ void shadeDiffuseMaterial(
                         pathSegments[idx].color /= probSurvive;
                     }
                 }
-
+#endif
 
             }
+            
             // If there was no intersection, color the ray black.
             // Lots of renderers use 4 channel color, RGBA, where A = alpha, often
             // used for opacity, in which case they can indicate "no opacity".
@@ -854,7 +917,6 @@ struct compareMatId
 };
 
 struct usefulPath
-
 {
     __host__ __device__
     bool operator()(const PathSegment& seg) const {
@@ -924,6 +986,7 @@ void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russian
 
     // --- PathSegment Tracing Stage ---
     // Shoot ray into scene, bounce between objects, push shading chunks
+
 
 
     bool iterationComplete = false;

@@ -149,7 +149,6 @@ void Scene::loadTexture(const std::string filename) {
     char* fileNew = new char[filepath.size() + 1];
     std::strcpy(fileNew, filepath.c_str());
 
-
     Texture diffuse;
     int width, height, channels;
     unsigned char* pixelData;
@@ -173,7 +172,6 @@ void Scene::loadTexture(const std::string filename) {
         }
         this->texels.push_back(pixel);
     }
-
 
     stbi_image_free(data);
 
@@ -211,6 +209,8 @@ int Scene::loadOBJ(const std::string filename, glm::mat4 transform)
             // Loop over faces(polygon)
             size_t index_offset = 0;
             for (size_t f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++) {
+                int faceMatID = shapes[s].mesh.material_ids[f]; 
+
                 size_t fv = size_t(shapes[s].mesh.num_face_vertices[f]);
 
                 for (size_t v = 0; v < fv; v++) {
@@ -253,17 +253,14 @@ int Scene::loadOBJ(const std::string filename, glm::mat4 transform)
     } 
     int vert_count = this->vertices.size() / 3;
 
-    int idx = 0;
-    for (int i = 0; i < vertices.size(); i += 3) {
-        Vertex v1 = vertices[i];
-        Vertex v2 = vertices[i + 1];
-        Vertex v3 = vertices[i + 2];
+    int startIdx = this->triangles.size(); // before adding new OBJ
+    int idx = startIdx;
 
-        Triangle t(v1, v2, v3, idx);
-        t.centroid = (v1.m_pos + v2.m_pos + v3.m_pos) * 0.333f;
+    for (int i = 0; i < vertices.size(); i += 3) {
+        Triangle t(vertices[i], vertices[i + 1], vertices[i + 2], idx);
+        t.centroid = (t.v1.m_pos + t.v2.m_pos + t.v3.m_pos) / 3.0f;
         this->tri_indices.push_back(idx);
         this->triangles.push_back(t);
-
         idx++;
     }
     bvhTree.resize(2.0 * this->triangles.size() - 1);
@@ -348,7 +345,6 @@ void Scene::loadFromJSON(const std::string& jsonName)
 
             loadOBJ(fileStr, newGeom.transform);
 
-            BuildBVH(this->triangles.size());
         }
         else
         {
@@ -363,6 +359,9 @@ void Scene::loadFromJSON(const std::string& jsonName)
 
         geoms.push_back(newGeom);
     }
+
+    BuildBVH(this->triangles.size());
+
     const auto& cameraData = data["Camera"];
     Camera& camera = state.camera;
     RenderState& state = this->state;
