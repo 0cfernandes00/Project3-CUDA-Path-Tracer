@@ -377,7 +377,8 @@ __host__ __device__ float IntersectBVH(
     int triangles_count,
     glm::vec3 &intersectP,
     glm::vec3 &normal,
-    glm::vec2 &uv) 
+    glm::vec2 &uv,
+    int &matId) 
 {
 
     float closest_t = FLT_MAX;
@@ -427,6 +428,8 @@ __host__ __device__ float IntersectBVH(
     Vertex v1 = tri_near.v1;
     Vertex v2 = tri_near.v2;
     Vertex v3 = tri_near.v3;
+
+    matId = tri_near.materialId;
 
     // Calculate barycentric coordinates
     glm::vec3 bary = barycentricCoords(intersectP, v1.m_pos, v2.m_pos, v3.m_pos); 
@@ -478,6 +481,8 @@ __global__ void computeIntersections(
 
         glm::vec3 tmp_intersect;
         glm::vec3 tmp_normal;
+        int matId = -1;
+        int meshType = -1;
 
         // naive parse through global geoms
 
@@ -496,11 +501,12 @@ __global__ void computeIntersections(
             else if (geom.type == MESH)
             {
                 if (enableBVH) {
-                    t = IntersectBVH(pathSegment.ray, bvh_nodes, triangles, tri_indices, 0, t_min, triangles_count, tmp_intersect, tmp_normal, uv);
+                    t = IntersectBVH(pathSegment.ray, bvh_nodes, triangles, tri_indices, 0, t_min, triangles_count, tmp_intersect, tmp_normal, uv, matId);
                 }
                 else {
                     obj_hit = i;
                 }
+                meshType = 1;
             }
     
             if (t > 0.0f && t_min > t)
@@ -509,6 +515,10 @@ __global__ void computeIntersections(
                 hit_geom_index = i;
                 intersect_point = tmp_intersect;
                 normal = tmp_normal;
+
+                /*if (geom.type == MESH && matId >= 0) {
+                    intersections[path_index].materialId = matId;
+                }*/
             }
 
             // TODO: add more intersection tests here... triangle? metaball? CSG?
@@ -556,6 +566,14 @@ __global__ void computeIntersections(
             intersections[path_index].surfaceNormal = normal;
             intersections[path_index].surfaceUVCoord = uv;
             intersections[path_index].uv = uv;
+
+
+            if (meshType == 1 && matId >= 0) {
+                intersections[path_index].materialId = matId; // Triangle-level
+            }
+            else {
+                intersections[path_index].materialId = geoms[hit_geom_index].materialid; // Geom-level
+            }
         }
     }
 }
@@ -653,6 +671,7 @@ __global__ void shadeDiffuseMaterial(
 
             int texID = materials[intersection.materialId].diffuseTextureID;
 
+            /*
             if (texID >= 0) {
                 Texture tex = textures[texID];
 
@@ -673,7 +692,7 @@ __global__ void shadeDiffuseMaterial(
                 // continue — do NOT return here
 
 
-            }
+            }*/
             
 #if 0
             if (material.diffuseTextureID != -1) {
@@ -929,7 +948,7 @@ struct usefulPath
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
  * of memory management
  */
-void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russianRoulette, bool enableBVH, bool antiAlias, bool denoise)
+void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russianRoulette, bool enableBVH, bool antiAlias)
 {
     const int traceDepth = hst_scene->state.traceDepth;
     const Camera& cam = hst_scene->state.camera;

@@ -9,7 +9,7 @@ private:
     void loadFromJSON(const std::string& jsonName);
 public:
     Scene(std::string filename);
-    int loadOBJ(const std::string filename, glm::mat4 transform);
+    int loadOBJ(const std::string filename, glm::mat4 transform, int matId);
     void loadTexture(const std::string filename);
     void BuildBVH(int count);
     void UpdateNodeBounds(unsigned int nodeIdx);

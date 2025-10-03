@@ -11,6 +11,6 @@ void pathtraceFree();
 void pathtrace(
 	uchar4 *pbo, int frame, int iteration,
 	bool materialSort, bool russianRoulette,
-	bool enableBVH, bool antiAlias, bool denoise);
+	bool enableBVH, bool antiAlias);
 
 

@@ -24,10 +24,10 @@ using namespace std;
 using json = nlohmann::json;
 
 Triangle::Triangle()
-    : v1(Vertex()), v2(Vertex()), v3(Vertex()), centroid(0.f), index_in_mesh(-1) {}
+    : v1(Vertex()), v2(Vertex()), v3(Vertex()), centroid(0.f), index_in_mesh(-1), materialId(-1) {}
 
 Triangle::Triangle(Vertex p1, Vertex p2, Vertex p3, int idx)
-    : v1(p1), v2(p2), v3(p3), centroid(0.f), index_in_mesh(idx) {}
+    : v1(p1), v2(p2), v3(p3), centroid(0.f), index_in_mesh(idx), materialId(-1) {}
 
 Vertex::Vertex()
     : m_pos(glm::vec3(0)), m_normal(glm::vec3(0)) {}
@@ -179,7 +179,7 @@ void Scene::loadTexture(const std::string filename) {
 
 }
 
-int Scene::loadOBJ(const std::string filename, glm::mat4 transform)
+int Scene::loadOBJ(const std::string filename, glm::mat4 transform, int materialId)
 {
     std::filesystem::path file = std::filesystem::current_path().parent_path() / "scenes" / "objs" / filename;
     std::string filepath = file.string();
@@ -259,6 +259,9 @@ int Scene::loadOBJ(const std::string filename, glm::mat4 transform)
     for (int i = 0; i < vertices.size(); i += 3) {
         Triangle t(vertices[i], vertices[i + 1], vertices[i + 2], idx);
         t.centroid = (t.v1.m_pos + t.v2.m_pos + t.v3.m_pos) / 3.0f;
+
+        t.materialId = materialId;
+
         this->tri_indices.push_back(idx);
         this->triangles.push_back(t);
         idx++;
@@ -343,7 +346,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
             newGeom.filename = new char[fileStr.size() + 1];
             std::strcpy(newGeom.filename, fileStr.c_str());
 
-            loadOBJ(fileStr, newGeom.transform);
+            loadOBJ(fileStr, newGeom.transform, MatNameToID[p["MATERIAL"]]);
 
         }
         else

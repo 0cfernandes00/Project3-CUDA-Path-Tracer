@@ -53,7 +53,6 @@ bool russianRoulette = true;
 bool depthOField = false;
 bool enableBVH = true;
 bool antiAlias = true;
-bool denoise = false;
 
 int width;
 int height;
@@ -488,7 +487,7 @@ void runCuda()
 
         // execute the kernel
         int frame = 0;
-        pathtrace(pbo_dptr, frame, iteration, materialSorting, russianRoulette, enableBVH, antiAlias, denoise);
+        pathtrace(pbo_dptr, frame, iteration, materialSorting, russianRoulette, enableBVH, antiAlias);
 
         // unmap buffer object
         cudaGLUnmapBufferObject(pbo);
