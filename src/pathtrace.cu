@@ -1,4 +1,4 @@
-#include "pathtrace.h"
+﻿#include "pathtrace.h"
 
 #include <cstdio>
 #include <cuda.h>
@@ -19,11 +19,14 @@
 #include "interactions.h"
 
 #include <iostream>
+#include <OpenImageDenoise/oidn.hpp>
 
 #define ERRORCHECK 1
 #define M_PI 3.14159265358979323846
 #define RAY_EPSILON 0.00005f
 #define EPSILON_RR 0.00005f
+
+#define DENOISE_ITERATION 50
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
@@ -100,6 +103,14 @@ static int* dev_rootNodeIdx = NULL;
 static Texture* dev_textures = NULL;
 static glm::vec4* dev_texels = NULL;
 
+#if DENOISE
+    static glm::vec3* dev_displayImg = NULL; 
+    static glm::vec3* dev_denoiseImg = NULL;
+    static glm::vec3* dev_albedoImg = NULL;
+    static glm::vec3* dev_normalsImg = NULL;
+    static oidn::DeviceRef oidn_device;
+#endif
+
 void InitDataContainer(GuiDataContainer* imGuiData)
 {
     guiData = imGuiData;
@@ -149,6 +160,23 @@ void pathtraceInit(Scene* scene)
     cudaMalloc(&dev_texels, scene->texels.size() * sizeof(glm::vec4));
     cudaMemcpy(dev_texels, scene->texels.data(), scene->texels.size() * sizeof(glm::vec4), cudaMemcpyHostToDevice);
 
+#if DENOISE
+    cudaMalloc(&dev_displayImg, pixelcount * sizeof(glm::vec3));
+    cudaMemset(dev_displayImg, 0, pixelcount * sizeof(glm::vec3));
+
+    cudaMalloc(&dev_denoiseImg, pixelcount * sizeof(glm::vec3));
+    cudaMemset(dev_denoiseImg, 0, pixelcount * sizeof(glm::vec3));
+
+    cudaMalloc(&dev_albedoImg, pixelcount * sizeof(glm::vec3));
+    cudaMemset(dev_albedoImg, 0, pixelcount * sizeof(glm::vec3));
+
+    cudaMalloc(&dev_normalsImg, pixelcount * sizeof(glm::vec3));
+    cudaMemset(dev_normalsImg, 0, pixelcount * sizeof(glm::vec3));
+
+    OIDNDevice device = oidnNewDevice(OIDN_DEVICE_TYPE_CPU);
+    oidnCommitDevice(device);
+#endif
+
     checkCUDAError("pathtraceInit");
 }
 
@@ -169,6 +197,13 @@ void pathtraceFree()
     cudaFree(dev_textures);
     cudaFree(dev_texels);
 
+#if DENOISE
+    cudaFree(dev_displayImg);
+    cudaFree(dev_denoiseImg);
+    cudaFree(dev_albedoImg);
+    cudaFree(dev_normalsImg);
+#endif
+
     checkCUDAError("pathtraceFree");
 }
 
@@ -182,7 +217,7 @@ void pathtraceFree()
 * motion blur - jitter rays "in time"
 * lens effect - jitter ray origin positions based on a lens
 */
-__global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, PathSegment* pathSegments)
+__global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, PathSegment* pathSegments, bool antiAlias)
 {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -204,8 +239,10 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
         float x_rng = 0.f;
         float y_rng = 0.f;
 
-        x_rng = u05(rng);
-        y_rng = u05(rng);
+        if (antiAlias) {
+            x_rng = u05(rng);
+            y_rng = u05(rng);
+        }
         // jitter ray direction for antialiasing
 
         segment.ray.direction = glm::normalize(cam.view
@@ -569,7 +606,13 @@ __global__ void shadeDiffuseMaterial(
     Material* materials,
     bool enableRR,
     Texture* textures,
-    glm::vec4* texels)
+    glm::vec4* texels
+
+#if DENOISE
+    ,glm::vec3* dev_albedoImg,
+    glm::vec3* dev_normalsImg 
+#endif
+)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < num_paths)
@@ -590,6 +633,7 @@ __global__ void shadeDiffuseMaterial(
             if (pathSegments[idx].remainingBounces <= 0) {
                 return;
 			}
+
 
             if (material.diffuseTextureID != -1) {
 
@@ -631,7 +675,7 @@ __global__ void shadeDiffuseMaterial(
 
                     /*
 				    glm::vec3 wiW = pathSegments[idx].ray.direction;
-
+                    F
                     float INV_PI = 1 / M_PI;
                     float pdf;
 				    float cosTheta = glm::dot(wiW, normal);
@@ -640,6 +684,10 @@ __global__ void shadeDiffuseMaterial(
                         //return;
                     }
                     */
+
+
+                dev_albedoImg[pathSegments[idx].pixelIndex] = pathSegments[idx].color;
+                dev_normalsImg[pathSegments[idx].pixelIndex] = intersection.surfaceNormal;
 
       
                 if (enableRR) {
@@ -681,6 +729,109 @@ __global__ void shadeDiffuseMaterial(
     }
 }
 
+#if DENOISE
+
+__global__ void blendImages(int n, glm::vec3* noisy, glm::vec3* denoised, glm::vec3* output, float alpha) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+
+    output[i] = (1.0f - alpha) * noisy[i] + alpha * denoised[i];
+}
+
+__global__ void copyImage(glm::vec3* dest, glm::vec3* src, int pixelCount) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < pixelCount) {
+        dest[index] = src[index];
+    }
+}
+
+void denoiseImage(glm::vec2 res, int pixelcount) {
+
+    const int width = hst_scene->state.camera.resolution.x;
+    const int height = hst_scene->state.camera.resolution.y;
+
+    // Create an Open Image Denoise device
+    oidn::DeviceRef device = oidn::newDevice(oidn::DeviceType::CPU);
+    device.commit();
+
+    std::vector<glm::vec3> h_image(pixelcount);
+    std::vector<glm::vec3> h_normals(pixelcount);
+    std::vector<glm::vec3> h_albedo(pixelcount);
+    std::vector<glm::vec3> h_denoise(pixelcount);
+
+    cudaMemcpy(h_image.data(), dev_image, pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_normals.data(), dev_normalsImg, pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_albedo.data(), dev_albedoImg, pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
+
+    oidn::FilterRef filter = device.newFilter("RT");  
+    filter.setImage("color", h_image.data(), oidn::Format::Float3, width, height);
+    filter.setImage("normal", h_normals.data(), oidn::Format::Float3, width, height);
+    filter.setImage("albedo", h_albedo.data(), oidn::Format::Float3, width, height);
+    filter.setImage("output", h_denoise.data(), oidn::Format::Float3, width, height);
+
+    filter.set("hdr", true); 
+    //filter.set("cleanAux", true); 
+    filter.commit();
+
+    /*
+    oidn::FilterRef albedoFilter = device.newFilter("RT"); 
+    albedoFilter.setImage("albedo", dev_albedoImg, oidn::Format::Float3, width, height);
+    albedoFilter.setImage("output", dev_albedoImg, oidn::Format::Float3, width, height);
+    albedoFilter.commit();
+
+    oidn::FilterRef normalFilter = device.newFilter("RT");
+    normalFilter.setImage("normal", dev_normalsImg, oidn::Format::Float3, width, height);
+    normalFilter.setImage("output", dev_normalsImg, oidn::Format::Float3, width, height);
+    normalFilter.commit();
+    */
+    //albedoFilter.execute();
+    //normalFilter.execute();
+
+
+    filter.execute(); 
+
+    // Check for errors
+    const char* errorMessage;
+    if (device.getError(errorMessage) != oidn::Error::None) {
+        std::cerr << "Error! " << errorMessage << std::endl;
+    }
+
+    cudaMemcpy(dev_denoiseImg, h_denoise.data(), pixelcount * sizeof(glm::vec3), cudaMemcpyHostToDevice);
+}
+
+__global__ void captureDenoiseData(
+    int num_paths,
+    ShadeableIntersection* intersections,
+    PathSegment* paths,
+    glm::vec3* normalsImg,
+    glm::vec3* albedoImg,
+    Material* materials,
+    int iter) 
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (index < num_paths) {
+    
+        auto intersection = intersections[index];
+        int pixelIdx = paths[index].pixelIndex;
+
+        if (intersection.t > 0.0f) {
+        
+            Material mat = materials[intersection.materialId];
+            normalsImg[pixelIdx] = intersection.surfaceNormal;
+        
+            glm::vec3 albedo = mat.color;
+            if (mat.emittance > 0.0f) {
+                albedo = mat.color * mat.emittance;
+            }
+            albedoImg[pixelIdx] = albedo;
+        }
+    
+    }
+
+}
+#endif
+
 // Add the current iteration's output to the overall image
 __global__ void finalGather(int nPaths, glm::vec3* image, PathSegment* iterationPaths)
 {
@@ -716,7 +867,7 @@ struct usefulPath
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
  * of memory management
  */
-void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russianRoulette, bool enableBVH)
+void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russianRoulette, bool enableBVH, bool antiAlias, bool denoise)
 {
     const int traceDepth = hst_scene->state.traceDepth;
     const Camera& cam = hst_scene->state.camera;
@@ -764,7 +915,7 @@ void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russian
 
     // TODO: perform one iteration of path tracing
 
-    generateRayFromCamera<<<blocksPerGrid2d, blockSize2d>>>(cam, iter, traceDepth, dev_paths);
+    generateRayFromCamera<<<blocksPerGrid2d, blockSize2d>>>(cam, iter, traceDepth, dev_paths, antiAlias);
     checkCUDAError("generate camera ray");
 
     int depth = 0;
@@ -802,6 +953,22 @@ void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russian
         cudaDeviceSynchronize();
         depth++;
 
+#if DENOISE
+        if (depth == 1) {
+            // Capture first bounce data for denoising
+            /*
+            captureDenoiseData << <numblocksPathSegmentTracing, blockSize1d >> > (
+                num_paths,
+                dev_intersections,
+                dev_paths,
+                dev_normalsImg,
+                dev_albedoImg,
+                dev_materials,
+                iter
+                );
+            */
+        }
+#endif
         // TODO:
         // --- Shading Stage ---
         // Shade path segments based on intersections and generate new rays by
@@ -844,7 +1011,13 @@ void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russian
             enableRR,
             dev_textures,
             dev_texels
+#if DENOISE
+            ,dev_albedoImg,
+            dev_normalsImg
+#endif
 		);
+
+   
 
         //TODO: Stream compact away all of the terminated paths.
         // You may use either your implementation or `thrust::remove_if` or its
@@ -866,10 +1039,38 @@ void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russian
     dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
     finalGather<<<numBlocksPixels, blockSize1d>>>(pixelcount, dev_image, dev_paths);
 
+#if DENOISE
+    int iterationCount = hst_scene->state.iterations;
+
+    if (iter % DENOISE_ITERATION == 0) {
+        denoiseImage(cam.resolution, pixelcount);
+        // Copy denoised result to display buffer
+        //cudaMemcpy(dev_displayImg, dev_denoiseImg, pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToDevice);
+        float alpha = 0.0f;
+        if (iter > 16) {
+            alpha = float(iter - 16) / float(iterationCount - 16);
+            if (alpha > 1.0f) alpha = 1.0f;
+        }
+
+        // Blend noisy + denoised into dev_image (the one you display)
+        int blockSize = 128;
+        int numBlocks = (pixelcount + blockSize - 1) / blockSize;
+        blendImages << <numBlocks, blockSize >> > (pixelcount, dev_image, dev_denoiseImg, dev_image, alpha);
+        cudaDeviceSynchronize();
+    }
+    else {
+        // Copy raw accumulated image to display buffer
+        cudaMemcpy(dev_displayImg, dev_image, pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToDevice);
+    }
+
+    // Send display buffer to PBO
+    sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, iter, dev_displayImg);
+#else
     ///////////////////////////////////////////////////////////////////////////
 
-    // Send results to OpenGL buffer for rendering
-    sendImageToPBO<<<blocksPerGrid2d, blockSize2d>>>(pbo, cam.resolution, iter, dev_image);
+// Send results to OpenGL buffer for rendering
+    sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, iter, dev_image);
+#endif
 
     // Retrieve image from GPU
     cudaMemcpy(hst_scene->state.image.data(), dev_image,

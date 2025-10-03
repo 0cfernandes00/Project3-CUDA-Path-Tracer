@@ -24,6 +24,7 @@
 #include <sstream>
 #include <string>
 
+
 static std::string startTimeString;
 
 // For camera controls
@@ -50,8 +51,9 @@ int iteration;
 bool materialSorting = true;
 bool russianRoulette = true;
 bool depthOField = false;
-bool enableBVH = false;
-
+bool enableBVH = true;
+bool antiAlias = true;
+bool denoise = false;
 
 int width;
 int height;
@@ -283,6 +285,7 @@ void RenderImGui()
     bool prevMatSort = materialSorting;
     bool prevRR = russianRoulette;
     bool prevBVH = enableBVH;
+    bool prevAA = antiAlias;
 
 
     ImGui::Begin("Path Tracer Analytics");                  // Create a window called "Hello, world!" and append into it.
@@ -293,12 +296,14 @@ void RenderImGui()
     ImGui::Checkbox("Material Sorting", &materialSorting);      // Edit bools storing our window open/close state
     ImGui::Checkbox("Russisan Roulette Path Term", &russianRoulette);      // Edit bools storing our window open/close state
     ImGui::Checkbox("Enable BVH", &enableBVH);
-    
+    ImGui::Checkbox("Anti Aliasing", &antiAlias);
 
     // check if any booleans flipped and trigger rerender
     if (materialSorting != prevMatSort) camchanged = true;
     if (russianRoulette != prevRR) camchanged = true;
     if (enableBVH != prevBVH) camchanged = true;
+    if (antiAlias != prevAA) camchanged = true;
+
 
     //ImGui::Checkbox("Another Window", &show_another_window);
 
@@ -483,7 +488,7 @@ void runCuda()
 
         // execute the kernel
         int frame = 0;
-        pathtrace(pbo_dptr, frame, iteration, materialSorting, russianRoulette, enableBVH);
+        pathtrace(pbo_dptr, frame, iteration, materialSorting, russianRoulette, enableBVH, antiAlias, denoise);
 
         // unmap buffer object
         cudaGLUnmapBufferObject(pbo);

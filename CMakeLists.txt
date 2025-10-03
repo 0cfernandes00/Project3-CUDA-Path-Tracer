@@ -9,8 +9,6 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-#set_property(TARGET MyPrebuiltLibrary PROPERTY IMPORTED_LOCATION "C:\Users\0cfer\Downloads\oidn-2.3.3.x64.windows\include")
-
 
 # Enable C++17 for host code
 set(CMAKE_CXX_STANDARD 17)
@@ -51,16 +49,12 @@ set(GLM_ROOT_DIR "${CMAKE_SOURCE_DIR}/external")
 find_package(GLM REQUIRED)
 include_directories(${GLM_INCLUDE_DIRS})
 
-find_package(OpenImageDenoise REQUIRED
-    HINTS "C:/Users/0cfer/Downloads/oidn")
-
-include_directories(${OpenImageDenoise_INCLUDE_DIRS})
-
-set(OIDN_ROOT "C:/Users/0cfer/Downloads/oidn")
+set(OIDN_ROOT "C:/oidn-2.3.3.x64.windows/oidn-2.3.3.x64.windows")
 
 include_directories(${OIDN_ROOT}/include)
-
 link_directories(${OIDN_ROOT}/lib)
+
+
 
 set(headers
     src/image.h
@@ -127,7 +121,6 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     ${GL_LIBRARIES}
     #stream_compaction  # TODO: uncomment if using your stream compaction
     ${OIDN_ROOT}/lib/OpenImageDenoise.lib
-    OpenImageDenoise
 )
 set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES CUDA_ARCHITECTURES native)

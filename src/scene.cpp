@@ -181,7 +181,7 @@ void Scene::loadTexture(const std::string filename) {
 
 }
 
-int Scene::loadOBJ(const std::string filename)
+int Scene::loadOBJ(const std::string filename, glm::mat4 transform)
 {
     std::filesystem::path file = std::filesystem::current_path().parent_path() / "scenes" / "objs" / filename;
     std::string filepath = file.string();
@@ -197,6 +197,12 @@ int Scene::loadOBJ(const std::string filename)
 
 
     bool result = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filepath.c_str(), basedir.c_str());
+
+    auto x = transform[3][0];
+    glm::vec4 trans = glm::vec4(transform[3][0], transform[3][1], transform[3][2], 0.f);
+    glm::vec4 rot = glm::vec4(transform[2][0], transform[2][1], transform[2][2], 0.f);
+    glm::vec4 scale = glm::vec4(transform[0][0], transform[1][1], transform[2][2], 0.f);
+
     
     if (result)
     {
@@ -211,20 +217,19 @@ int Scene::loadOBJ(const std::string filename)
 
                     // Define new Vertex
                     Vertex newVert;
-                    float scale = 2;
 
                     tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
 
-                    tinyobj::real_t vx =  attrib.vertices[3 * size_t(idx.vertex_index) + 0] * scale;
-                    tinyobj::real_t vy = 3.5 + attrib.vertices[3 * size_t(idx.vertex_index) + 1] * scale;
-                    tinyobj::real_t vz = attrib.vertices[3 * size_t(idx.vertex_index) + 2] * scale;
+                    tinyobj::real_t vx = trans.x + attrib.vertices[3 * size_t(idx.vertex_index) + 0] * scale.x;
+                    tinyobj::real_t vy = trans.y + attrib.vertices[3 * size_t(idx.vertex_index) + 1] * scale.y;
+                    tinyobj::real_t vz = trans.z + attrib.vertices[3 * size_t(idx.vertex_index) + 2] * scale.z;
 
                     newVert.m_pos = glm::vec3(vx, vy, vz);
 
                     if (idx.normal_index >= 0) {
-                        tinyobj::real_t nx = attrib.normals[3 * size_t(idx.normal_index) + 0] * scale;
-                        tinyobj::real_t ny = attrib.normals[3 * size_t(idx.normal_index) + 1] * scale;
-                        tinyobj::real_t nz = attrib.normals[3 * size_t(idx.normal_index) + 2] * scale;
+                        tinyobj::real_t nx = attrib.normals[3 * size_t(idx.normal_index) + 0];
+                        tinyobj::real_t ny = attrib.normals[3 * size_t(idx.normal_index) + 1];
+                        tinyobj::real_t nz = attrib.normals[3 * size_t(idx.normal_index) + 2];
 
                         // Set vertex position
                         newVert.m_normal = glm::vec3(nx, ny, nz);
@@ -317,6 +322,18 @@ void Scene::loadFromJSON(const std::string& jsonName)
     {
         const auto& type = p["TYPE"];
         Geom newGeom;
+
+        newGeom.transform = glm::mat4(0.f);
+        const auto& trans = p["TRANS"];
+        const auto& rotat = p["ROTAT"];
+        const auto& scale = p["SCALE"];
+        newGeom.translation = glm::vec3(trans[0], trans[1], trans[2]);
+        newGeom.rotation = glm::vec3(rotat[0], rotat[1], rotat[2]);
+        newGeom.scale = glm::vec3(scale[0], scale[1], scale[2]);
+        newGeom.transform = utilityCore::buildTransformationMatrix(
+            newGeom.translation, newGeom.rotation, newGeom.scale);
+
+
         if (type == "cube")
         {
             newGeom.type = CUBE;
@@ -329,7 +346,8 @@ void Scene::loadFromJSON(const std::string& jsonName)
             newGeom.filename = new char[fileStr.size() + 1];
             std::strcpy(newGeom.filename, fileStr.c_str());
 
-            loadOBJ(fileStr);
+            loadOBJ(fileStr, newGeom.transform);
+
             BuildBVH(this->triangles.size());
         }
         else
@@ -338,14 +356,8 @@ void Scene::loadFromJSON(const std::string& jsonName)
         }
 
         newGeom.materialid = MatNameToID[p["MATERIAL"]];
-        const auto& trans = p["TRANS"];
-        const auto& rotat = p["ROTAT"];
-        const auto& scale = p["SCALE"];
-        newGeom.translation = glm::vec3(trans[0], trans[1], trans[2]);
-        newGeom.rotation = glm::vec3(rotat[0], rotat[1], rotat[2]);
-        newGeom.scale = glm::vec3(scale[0], scale[1], scale[2]);
-        newGeom.transform = utilityCore::buildTransformationMatrix(
-            newGeom.translation, newGeom.rotation, newGeom.scale);
+
+
         newGeom.inverseTransform = glm::inverse(newGeom.transform);
         newGeom.invTranspose = glm::inverseTranspose(newGeom.transform);
 
