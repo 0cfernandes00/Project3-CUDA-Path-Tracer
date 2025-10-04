@@ -6,6 +6,7 @@ CUDA Path Tracer
 * Caroline Fernandes
   * [LinkedIn](https://www.linkedin.com/in/caroline-fernandes-0-/), [personal website](https://0cfernandes00.wixsite.com/visualfx)
 * Tested on: Windows 11, i9-14900HX @ 2.20GHz, Nvidia GeForce RTX 4070
+![img/cornell.2025-10-04_03-36-46z.1025samp.png]()
 
 ### Features and Sections
 
