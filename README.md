@@ -37,15 +37,21 @@ Using thrust's library I was able to stream compact away paths that had terminat
 I had originally expected material sorting to improve performance but it doesn't seem to have a huge speedup. This could potentially be because the way it's sorting the materials is too expensive of an operation to outweigh the benefits of putting similar materials close together in memory. 
 
 ### Anti-Aliasing
+I implemented Stochastic sampled antialiasing by jittering the ray that was generated from the camera with a small offset in both the x & y directions.
 
 ### Russian Roulette Termination
+Russian Roulette Termination is a way of randomly terminating paths early that seem to have low throughput contributions
 
 ### Texture Mapping
+This was one of the last features I implemented and spent a good amount of time debugging uvs and textures.
 
-**Environment Mapping **
+Environment Mapping
 
 ### Mesh Loading
+I implemented OBJ loading using the tinyOBJ library.
 
 ### Bounding Volume Hierarchies
+I implemented BVH and used AABB for the bounds test.
 
 ### Intel Image Denoise
+I integrated [Intel's Denoiser](https://github.com/RenderKit/oidn) which utilizes Deep Learning methods to converge the results faster. This feature provided a much nicer image but it effectively blurred hard edges in geometry. One thing I'd be interested to do is test out is the optimal number of denoise iterations that preserve hard edges.
