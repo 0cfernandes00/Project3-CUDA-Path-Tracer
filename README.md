@@ -1,4 +1,4 @@
-CUDA Path Tracer
+CUDA Path Tracer - using 1 late day
 ================
 
 **University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 3**
@@ -19,10 +19,10 @@ Core Features:
 - [Anti-Aliasing](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#anti-aliasing)
 
 Part 2 Features:
-- [Mesh Loading](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#mesh-loading)
-- [Texture Mapping](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#texture-mapping)
-- [Bounding Volume Hierarchies](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#bouding-volume-hierarchies)
 - [Russian Roulette Termination](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#russian-roulette-termination)
+- [Texture Mapping](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#texture-mapping)
+- [Mesh Loading](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#mesh-loading)
+- [Bounding Volume Hierarchies](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#bouding-volume-hierarchies)
 - [Intel Image Denoise](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#intel-image-denoise)
 
 ### Shading
@@ -31,17 +31,21 @@ I implemented ideal diffuse and specular shading. Dffuse shading distributes lig
 
 
 ### Stream Compaction
+Using thrust's library I was able to stream compact away paths that had terminated organizing the paths better in memory.
 
 ### Material Sorting
+I had originally expected material sorting to improve performance but it doesn't seem to have a huge speedup. This could potentially be because the way it's sorting the materials is too expensive of an operation to outweigh the benefits of putting similar materials close together in memory. 
 
 ### Anti-Aliasing
 
-### Mesh Loading
+### Russian Roulette Termination
 
 ### Texture Mapping
 
-### Bounding Volume Hierarchies
+**Environment Mapping **
 
-### Russian Roulette Termination
+### Mesh Loading
+
+### Bounding Volume Hierarchies
 
 ### Intel Image Denoise
