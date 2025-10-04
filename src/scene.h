@@ -25,6 +25,8 @@ public:
     std::vector<glm::vec4> texels;
     RenderState state;
 
+	Texture envMap;
+
     //BVH
     std::vector<BVHNode> bvhTree;
     unsigned int nodesUsed = 1;

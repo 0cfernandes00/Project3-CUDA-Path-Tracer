@@ -217,7 +217,7 @@ void pathtraceFree()
 * motion blur - jitter rays "in time"
 * lens effect - jitter ray origin positions based on a lens
 */
-__global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, PathSegment* pathSegments, bool antiAlias)
+__global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, PathSegment* pathSegments, bool antiAlias, bool dof)
 {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -235,7 +235,7 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
         // TODO: implement antialiasing by jittering the ray
         thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, pathSegments[index].remainingBounces);
         thrust::uniform_real_distribution<float> u05(-0.5, 0.5);
-       
+
         float x_rng = 0.f;
         float y_rng = 0.f;
 
@@ -250,49 +250,49 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
             - cam.up * cam.pixelLength.y * ((float)y + y_rng - (float)cam.resolution.y * 0.5f)
         );
 
-#if 0
-        // lens effect Depth of Field      
-        if (cam.lensRadius > 0) {
-            // Sample point on lens
+        if (dof) {
+            // lens effect Depth of Field      
+            if (cam.lensRadius > 0) {
+                // Sample point on lens
 
-            // returns a vec3
-                // TODO
-            glm::vec2 sample(0,0);
+                // returns a vec3
+                    // TODO
+                glm::vec2 sample(0, 0);
 
-            thrust::uniform_real_distribution<float> u01(0, 1);
-            glm::vec2 xi = glm::vec2(u01(rng), u01(rng));
+                thrust::uniform_real_distribution<float> u01(0, 1);
+                glm::vec2 xi = glm::vec2(u01(rng), u01(rng));
 
-            glm::vec2 offset = 2.0f * xi - glm::vec2(1, 1);
-            if (offset.x == 0 && offset.y == 0) {
-                sample = glm::vec2(0.f);
+                glm::vec2 offset = 2.0f * xi - glm::vec2(1, 1);
+                if (offset.x == 0 && offset.y == 0) {
+                    sample = glm::vec2(0.f);
+                }
+
+                float theta, r;
+                if (abs(offset.x) > abs(offset.y)) {
+                    r = offset.x;
+                    theta = PI / 4.f * (offset.y / offset.x);
+                }
+                else {
+                    r = offset.y;
+                    theta = PI / 2.f - PI / 4.f * (offset.x / offset.y);
+                }
+                sample = r * glm::vec2(cos(theta), sin(theta));
+
+
+
+                glm::vec2 pLens = cam.lensRadius * sample;
+                glm::vec3 pLens_world = pLens.x * cam.right + pLens.y * cam.up;
+
+                // Compute point on plane of focus
+                float ft = cam.focalDistance / segment.ray.direction.z;
+                glm::vec3 pFocus = cam.position + segment.ray.direction * cam.focalDistance;
+
+                // Update ray for effect of lens 
+                segment.ray.origin = cam.position + pLens_world;
+                segment.ray.direction = glm::normalize(pFocus - segment.ray.origin);
+
             }
-
-            float theta, r;
-            if (abs(offset.x) > abs(offset.y)) {
-                r = offset.x;
-                theta = PI / 4.f * (offset.y / offset.x);
-            }
-            else {
-                r = offset.y;
-                theta = PI / 2.f - PI / 4.f * (offset.x / offset.y);
-            }
-            sample = r * glm::vec2(cos(theta), sin(theta));
-
-
-
-            glm::vec2 pLens = cam.lensRadius * sample;
-            glm::vec3 pLens_world = pLens.x * cam.right + pLens.y * cam.up;
-
-            // Compute point on plane of focus
-            float ft = cam.focalDistance / segment.ray.direction.z;
-            glm::vec3 pFocus = cam.position + segment.ray.direction * cam.focalDistance;
-
-            // Update ray for effect of lens 
-            segment.ray.origin = cam.position + pLens_world;
-            segment.ray.direction = glm::normalize(pFocus - segment.ray.origin);
-
         }
-#endif       
         
 
         segment.pixelIndex = index;
@@ -300,7 +300,7 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
     }
 }
 
-#if 0
+
 __host__ __device__ glm::vec3 barycentricCoords(
     glm::vec3 p,
     glm::vec3 v0,
@@ -324,23 +324,7 @@ __host__ __device__ glm::vec3 barycentricCoords(
 
     return glm::vec3(s1, s2, s3);
 }
-#else
-__host__ __device__ glm::vec3 barycentricCoords(glm::vec3 p, glm::vec3 a, glm::vec3 b, glm::vec3 c) {
-    glm::vec3 v0 = b - a, v1 = c - a, v2 = p - a;
-    float d00 = glm::dot(v0, v0);
-    float d01 = glm::dot(v0, v1);
-    float d11 = glm::dot(v1, v1);
-    float d20 = glm::dot(v2, v0);
-    float d21 = glm::dot(v2, v1);
-    float denom = d00 * d11 - d01 * d01;
 
-    float v = (d11 * d20 - d01 * d21) / denom;
-    float w = (d00 * d21 - d01 * d20) / denom;
-    float u = 1.0f - v - w;
-
-    return glm::vec3(u, v, w);
-}
-#endif
 
 __host__ __device__ bool IntersectAABB(Ray& ray, glm::vec3 boxMin, glm::vec3 boxMax, float t)
 {
@@ -436,7 +420,7 @@ __host__ __device__ float IntersectBVH(
 
     // Interpolate normals
     normal = glm::normalize(bary.x * v1.m_normal + bary.y * v2.m_normal + bary.z * v3.m_normal); 
-    uv = bary.x * v1.m_uv + bary.y * v2.m_uv + bary.z * v3.m_uv; // Interpolate uv
+    uv = bary.x * v1.m_uv + bary.y * v2.m_uv + bary.z * v3.m_uv; 
 
 
     return glm::length(ray.origin - intersectP);
@@ -516,9 +500,6 @@ __global__ void computeIntersections(
                 intersect_point = tmp_intersect;
                 normal = tmp_normal;
 
-                /*if (geom.type == MESH && matId >= 0) {
-                    intersections[path_index].materialId = matId;
-                }*/
             }
 
             // TODO: add more intersection tests here... triangle? metaball? CSG?
@@ -632,6 +613,53 @@ __global__ void shadeFakeMaterial(
     }
 }
 
+__device__ glm::vec3 sampleEnvMapBilinear(
+    const glm::vec3& dir,
+    const Texture& envTex,
+    glm::vec4* texels)
+{
+    glm::vec3 d = glm::normalize(dir);
+    float theta = atan2f(d.z, d.x);
+    float phi = acosf(glm::clamp(d.y, -1.0f, 1.0f));
+    float u = (theta + M_PI) / (2.0f * M_PI);
+    float v = phi / M_PI;
+
+    // map to continuous coordinates
+    float x = u * (envTex.width - 1);
+    float y = v * (envTex.height - 1);
+
+    int x0 = (int)floorf(x);
+    int y0 = (int)floorf(y);
+    int x1 = x0 + 1;
+    int y1 = y0 + 1;
+
+    float width = envTex.width;
+	float height = envTex.height;
+
+    x0 = glm::clamp((float)x0, 0.f, width - 1);
+    y0 = glm::clamp((float)y0, 0.f, height - 1);
+    x1 = glm::clamp((float)x1, 0.f, width - 1);
+    y1 = glm::clamp((float)y1, 0.f, height - 1);
+
+    float fx = x - floorf(x);
+    float fy = y - floorf(y);
+
+	float startIdx = envTex.startPixelTex;
+    int w = envTex.width;
+
+    glm::vec3 c00 = glm::vec3(texels[int(startIdx + y0 * w + x0)]);
+    glm::vec3 c10 = glm::vec3(texels[int(startIdx + y0 * w + x1)]);
+    glm::vec3 c01 = glm::vec3(texels[int(startIdx + y1 * w + x0)]);
+    glm::vec3 c11 = glm::vec3(texels[int(startIdx + y1 * w + x1)]);
+
+    glm::vec3 c0 = c00 * (1.0f - fx) + c10 * fx;
+    glm::vec3 c1 = c01 * (1.0f - fx) + c11 * fx;
+    glm::vec3 c = c0 * (1.0f - fy) + c1 * fy;
+
+    return c;
+}
+
+
 __global__ void shadeDiffuseMaterial(
     int iter,
     int num_paths,
@@ -640,176 +668,268 @@ __global__ void shadeDiffuseMaterial(
     Material* materials,
     bool enableRR,
     Texture* textures,
-    glm::vec4* texels
-
+    glm::vec4* texels,
+    Texture envTex
 #if DENOISE
-    ,glm::vec3* dev_albedoImg,
-    glm::vec3* dev_normalsImg 
+    , glm::vec3* dev_albedoImg,
+    glm::vec3* dev_normalsImg
 #endif
 )
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < num_paths)
-    {
+    if (idx >= num_paths) return;
 
-        ShadeableIntersection intersection = shadeableIntersections[idx];
-        if (intersection.t > 0.0f) // if the intersection exists...
-        {
+    ShadeableIntersection intersection = shadeableIntersections[idx];
 
-            // Set up the RNG
-            // LOOK: this is how you use thrust's RNG! Please look at
-            // makeSeededRandomEngine as well.
-            thrust::default_random_engine rng = makeSeededRandomEngine(iter, idx, pathSegments[idx].remainingBounces);
-            thrust::uniform_real_distribution<float> u01(0, 1);
-
-            Material material = materials[intersection.materialId];
-            glm::vec3 materialColor = material.color;
-
-            if (pathSegments[idx].remainingBounces <= 0) {
-                return;
-			}
-
-            int texID = materials[intersection.materialId].diffuseTextureID;
-
-            /*
-            if (texID >= 0) {
-                Texture tex = textures[texID];
-
-                int iu = glm::clamp(float(intersection.uv.x * tex.width), 0.f, tex.width - 1);
-                int iv = glm::clamp(float(intersection.uv.y * tex.height), 0.f, tex.height - 1);
-
-                int idxTex = tex.startPixelTex + iv * tex.width + iu;
-                glm::vec4 texel = texels[idxTex];
-                glm::vec3 texColor = glm::vec3(texel.x, texel.y, texel.z);
-
-                pathSegments[idx].color = texColor;
-                pathSegments[idx].remainingBounces = 0;
-                //return;
-
-                materialColor = texColor;
-                //material.color = texColor;
-                material.color = materialColor;
-                // continue — do NOT return here
+    // No intersection: make black and terminate
+    if (intersection.t <= 0.0f) {
+        glm::vec3 envColor = sampleEnvMapBilinear(pathSegments[idx].ray.direction, envTex, texels);
+        pathSegments[idx].color *= envColor;
 
 
-            }*/
-            
-#if 0
-            if (material.diffuseTextureID != -1) {
+        // add environment map
+        //pathSegments[idx].color = glm::vec3(0.0f);
+        pathSegments[idx].remainingBounces = 0;
+        return;
+    }
 
-                // read from texture
+    // If path already dead, nothing to do
+    if (pathSegments[idx].remainingBounces <= 0) {
+        return;
+    }
 
-                Texture tmp = textures[material.diffuseTextureID];
-                int startPixel = tmp.startPixelTex;
-                glm::vec2 uv = intersection.uv;
+    // RNG: seed with iter and the path index and remainingBounces for variance
+    thrust::default_random_engine rng = makeSeededRandomEngine(iter, idx, pathSegments[idx].remainingBounces);
+    thrust::uniform_real_distribution<float> u01(0, 1);
 
-                //int x = int(glm::fract(uv.x) * (float)tmp.width);
-                //int y = int(glm::fract(1.0 - uv.y) * (float)tmp.height);
+    Material material = materials[intersection.materialId];
+    glm::vec3 materialColor = material.color;
+    glm::vec3 normal = intersection.surfaceNormal;
 
-                int x = glm::min(float(glm::fract(uv.x) * tmp.width), tmp.width - 1.f);
-                int y = glm::min(float(glm::fract(1.0f - uv.y) * tmp.height), tmp.height - 1.f);
-                
-                int texIdx = startPixel + y * tmp.width + x;
+    // Compute intersection position (world)
+    glm::vec3 intersectPos = pathSegments[idx].ray.origin + pathSegments[idx].ray.direction * intersection.t;
 
-                //materialColor = glm::vec3(texels[texIdx]);
-                glm::vec4 texel = texels[texIdx];
-                materialColor = glm::vec3(texel.x, texel.y, texel.z);
-                //materialColor = glm::vec3(uv.x, uv.y, 0.0f);
+    // If the hit material is emissive, accumulate emission into throughput and terminate path.
+    if (material.emittance > 0.0f) {
+        // Multiply throughput by emitted radiance (emissive color * emittance)
+        pathSegments[idx].color *= (materialColor * material.emittance);
 
-            }
-            material.color = materialColor;
-#endif           
-
-            // If the material indicates that the object was a light, "light" the ray
-            if (material.emittance > 0.0f) {
-                pathSegments[idx].color *= (materialColor * material.emittance);
-				pathSegments[idx].remainingBounces = 0; // Terminate this path
-            }
-
-            // Otherwise, do some pseudo-lighting computation. This is actually more
-            // like what you would expect from shading in a rasterizer like OpenGL.
-            // TODO: replace this! you should be able to start with basically a one-liner
-            else {
-
-				// generate new ray direction with cosine-weighted hemisphere sampling
-				glm::vec3 normal = intersection.surfaceNormal;
-
-                if (texID >= 0) {
-                    Texture tex = textures[texID];
-
-                    int iu = glm::clamp(float(intersection.uv.x * tex.width), 0.f, tex.width - 1);
-                    int iv = glm::clamp(float(intersection.uv.y * tex.height), 0.f, tex.height - 1);
-
-                    int idxTex = tex.startPixelTex + iv * tex.width + iu;
-                    glm::vec4 texel = texels[idxTex];
-                    glm::vec3 texColor = glm::vec3(texel.x, texel.y, texel.z);
-
-                    pathSegments[idx].color = texColor;
-                    pathSegments[idx].remainingBounces = 0;
-                    //return;
-
-                    materialColor = texColor;
-                    //material.color = texColor;
-                    material.color = materialColor;
-                    // continue — do NOT return here
-
-
-                }
-                else {
-                    scatterRay(pathSegments[idx], pathSegments[idx].ray.origin + pathSegments[idx].ray.direction * intersection.t, normal, material, rng);
-                }
-
-                
-                pathSegments[idx].color *= materialColor;
-                pathSegments[idx].remainingBounces--;
-                
-
-
-                
+        pathSegments[idx].remainingBounces = 0;
 #if DENOISE
-               
-                dev_albedoImg[pathSegments[idx].pixelIndex] = pathSegments[idx].color;
-                dev_normalsImg[pathSegments[idx].pixelIndex] = intersection.surfaceNormal;
+        dev_albedoImg[pathSegments[idx].pixelIndex] = materialColor;
+        dev_normalsImg[pathSegments[idx].pixelIndex] = normal;
+#endif
+        return;
+    }
 
-                if (enableRR) {
-                    // find the path's maximum component output
-                    float lMax = glm::max(pathSegments[idx].color.r, pathSegments[idx].color.g);
-                    lMax = glm::max(lMax, pathSegments[idx].color.b);
+    // If textured, fetch texel color and override albedo (materialColor). Do not terminate path here.
+    int texID = material.diffuseTextureID;
+    if (texID >= 0) {
+        Texture tex = textures[texID];
 
-                    // set the termination probability
-                    thrust::uniform_real_distribution<float> u25(0,0.25);
-                    float probStart = u25(rng);
+        // clamp uv to [0,1]
+        float u = glm::clamp(intersection.uv.x, 0.0f, 1.0f);
+        float v = glm::clamp(intersection.uv.y, 0.0f, 1.0f);
 
-                    float pTerm = (probStart > 1.0f - lMax) ? probStart : 1.0f - lMax;
-                    float probSurvive = 1.0f - pTerm;
+        // map uv to texel coords (nearest sampling). You may want bilinear later.
+        int iu = static_cast<int>(u * (tex.width - 1));
+        int iv = static_cast<int>(v * (tex.height - 1));
 
-                    float xi = u01(rng);
+        iu = glm::clamp((float)iu, 0.f, tex.width - 1);
+        iv = glm::clamp((float)iv, 0.f, tex.height - 1);
 
-                    // Roll the dice
-                    if (xi < pTerm) {
-                        // terminate ray
-                        pathSegments[idx].remainingBounces = 0;
-                        return;
-                    } else {
-                        pathSegments[idx].color /= probSurvive;
-                    }
-                }
+        int idxTex = tex.startPixelTex + iv * tex.width + iu;
+        glm::vec4 texel = texels[idxTex];
+        glm::vec3 texColor = glm::vec3(texel.x, texel.y, texel.z);
+
+        materialColor = texColor;
+
+    }
+
+    // Scatter ray: produce new direction in hemisphere about the normal
+    scatterRay(pathSegments[idx], intersectPos, normal, material, rng);
+
+    // Evaluate cosine between new direction and surface normal
+    glm::vec3 wi = pathSegments[idx].ray.direction;
+    float cosTheta = glm::dot(normal, wi);
+
+    // If sampled direction goes below hemisphere (shouldn't with a correct hemisphere sampler)
+    if (cosTheta <= 0.0f) {
+        pathSegments[idx].remainingBounces = 0;
+        return;
+    }
+
+    // Lambertian BRDF f_r = albedo / PI, PDF for cosine-weighted sampling = cosTheta / PI
+    const float INV_PI = 1.0f / M_PI;
+    glm::vec3 bsdf = materialColor * INV_PI;
+    float pdf = cosTheta * INV_PI;
+
+    // Update throughput: multiply by (f_r * cosTheta) / pdf
+    // For cosine-weighted sampling, this reduces to materialColor (albedo), but keep explicit math.
+    if (pdf > 0.0f) {
+        glm::vec3 weight = (bsdf * cosTheta) / pdf; 
+        pathSegments[idx].color *= weight;
+    }
+    else {
+        pathSegments[idx].remainingBounces = 0;
+        return;
+    }
+
+    pathSegments[idx].remainingBounces--;
+
+#if DENOISE
+    // Save albedo & normals (albedo should be the diffuse albedo, not the full throughput)
+    // For denoising we want per-pixel albedo
+    dev_albedoImg[pathSegments[idx].pixelIndex] = materialColor;
+    dev_normalsImg[pathSegments[idx].pixelIndex] = normal;
 #endif
 
-            }
-            
-            // If there was no intersection, color the ray black.
-            // Lots of renderers use 4 channel color, RGBA, where A = alpha, often
-            // used for opacity, in which case they can indicate "no opacity".
-            // This can be useful for post-processing and image compositing.
+    // Russian roulette 
+    if (enableRR && pathSegments[idx].remainingBounces > 2) {
+        // Choose survival probability based on maximum component of throughput (conservative)
+        float maxComp = glm::max(pathSegments[idx].color.r, glm::max(pathSegments[idx].color.g, pathSegments[idx].color.b));
+        // Keep p in a reasonable range
+        float pSurvive = glm::clamp(maxComp, 0.05f, 0.95f);
+
+        float xi = u01(rng);
+        if (xi > pSurvive) {
+            // terminate path
+            pathSegments[idx].remainingBounces = 0;
+            return;
         }
         else {
-            pathSegments[idx].color = glm::vec3(0.0f);
+            // Compensate for probability of survival to keep estimator unbiased
+            pathSegments[idx].color /= pSurvive;
+        }
+    }
+
+}
+
+
+/*
+__global__ void shadeDiffuseMaterial(
+    int iter,
+    int num_paths,
+    ShadeableIntersection* shadeableIntersections,
+    PathSegment* pathSegments,
+    Material* materials,
+    bool enableRR,
+    Texture* textures,
+    glm::vec4* texels,
+    Texture envTex         // <-- NEW: pass in your HDRI as a Texture
+#if DENOISE
+    ,glm::vec3* dev_albedoImg,
+    glm::vec3* dev_normalsImg
+#endif
+)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= num_paths) return;
+
+    ShadeableIntersection intersection = shadeableIntersections[idx];
+
+    if (intersection.t > 0.0f) // hit geometry
+    {
+        thrust::default_random_engine rng =
+            makeSeededRandomEngine(iter, idx, pathSegments[idx].remainingBounces);
+        thrust::uniform_real_distribution<float> u01(0, 1);
+
+        Material material = materials[intersection.materialId];
+        glm::vec3 materialColor = material.color;
+
+        if (pathSegments[idx].remainingBounces <= 0) return;
+
+        int texID = material.diffuseTextureID;
+
+        // Light source
+        if (material.emittance > 0.0f) {
+            pathSegments[idx].color *= (materialColor * material.emittance);
+            pathSegments[idx].remainingBounces = 0;
+            return;
         }
 
-      
+        // Diffuse surface
+        glm::vec3 normal = intersection.surfaceNormal;
+        glm::vec3 intersectPos =
+            pathSegments[idx].ray.origin + pathSegments[idx].ray.direction * intersection.t;
+
+        if (texID >= 0) {
+            Texture tex = textures[texID];
+
+            int iu = glm::clamp(float(intersection.uv.x * tex.width), 0.f, tex.width - 1);
+            int iv = glm::clamp(float(intersection.uv.y * tex.height), 0.f, tex.height - 1);
+
+            int idxTex = tex.startPixelTex + iv * tex.width + iu;
+            glm::vec4 texel = texels[idxTex];
+            glm::vec3 texColor = glm::vec3(texel.x, texel.y, texel.z);
+
+            materialColor = texColor;
+            material.color = materialColor;
+        }
+
+        // Scatter new ray
+        scatterRay(pathSegments[idx], intersectPos, normal, material, rng);
+        glm::vec3 wi = pathSegments[idx].ray.direction;
+        float cosTheta = glm::dot(normal, wi);
+
+        if (cosTheta <= 0.0f) {
+            pathSegments[idx].remainingBounces = 0;
+            return;
+        }
+
+        const float INV_PI = 1.0f / M_PI;
+        glm::vec3 bsdf = materialColor * INV_PI;
+        float pdf = cosTheta * INV_PI;
+
+        if (pdf > 0.0f) {
+            pathSegments[idx].color *= (bsdf * cosTheta) / pdf;
+        }
+        else {
+            pathSegments[idx].remainingBounces = 0;
+            return;
+        }
+
+        pathSegments[idx].remainingBounces--;
+
+#if DENOISE
+        dev_albedoImg[pathSegments[idx].pixelIndex] = materialColor;
+        dev_normalsImg[pathSegments[idx].pixelIndex] = intersection.surfaceNormal;
+#endif
+
+        if (enableRR) {
+            float lMax = fmaxf(pathSegments[idx].color.r,
+                fmaxf(pathSegments[idx].color.g, pathSegments[idx].color.b));
+
+            thrust::uniform_real_distribution<float> u25(0, 0.25f);
+            float probStart = u25(rng);
+
+            float pTerm = (probStart > 1.0f - lMax) ? probStart : 1.0f - lMax;
+            float probSurvive = 1.0f - pTerm;
+
+            if (u01(rng) < pTerm) {
+                pathSegments[idx].remainingBounces = 0;
+                return;
+            }
+            else {
+                pathSegments[idx].color /= probSurvive;
+            }
+        }
+    }
+    else { // MISS → environment
+        glm::vec3 envColor = sampleEnvMap(pathSegments[idx].ray.direction, envTex, texels);
+        pathSegments[idx].color *= envColor;
+        
+        if (useEnvMap) {
+            glm::vec3 envColor = sampleEnvMap(pathSegments[idx].ray.direction, envTex, texels);
+            pathSegments[idx].color *= envColor;
+        }
+        else {
+            pathSegments[idx].color = glm::vec3(0.0f); // black background
+        }
+        
     }
 }
+*/
 
 #if DENOISE
 
@@ -818,13 +938,6 @@ __global__ void blendImages(int n, glm::vec3* noisy, glm::vec3* denoised, glm::v
     if (i >= n) return;
 
     output[i] = (1.0f - alpha) * noisy[i] + alpha * denoised[i];
-}
-
-__global__ void copyImage(glm::vec3* dest, glm::vec3* src, int pixelCount) {
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-    if (index < pixelCount) {
-        dest[index] = src[index];
-    }
 }
 
 void denoiseImage(glm::vec2 res, int pixelcount) {
@@ -852,23 +965,8 @@ void denoiseImage(glm::vec2 res, int pixelcount) {
     filter.setImage("output", h_denoise.data(), oidn::Format::Float3, width, height);
 
     filter.set("hdr", true); 
-    //filter.set("cleanAux", true); 
+
     filter.commit();
-
-    /*
-    oidn::FilterRef albedoFilter = device.newFilter("RT"); 
-    albedoFilter.setImage("albedo", dev_albedoImg, oidn::Format::Float3, width, height);
-    albedoFilter.setImage("output", dev_albedoImg, oidn::Format::Float3, width, height);
-    albedoFilter.commit();
-
-    oidn::FilterRef normalFilter = device.newFilter("RT");
-    normalFilter.setImage("normal", dev_normalsImg, oidn::Format::Float3, width, height);
-    normalFilter.setImage("output", dev_normalsImg, oidn::Format::Float3, width, height);
-    normalFilter.commit();
-    */
-    //albedoFilter.execute();
-    //normalFilter.execute();
-
 
     filter.execute(); 
 
@@ -881,37 +979,6 @@ void denoiseImage(glm::vec2 res, int pixelcount) {
     cudaMemcpy(dev_denoiseImg, h_denoise.data(), pixelcount * sizeof(glm::vec3), cudaMemcpyHostToDevice);
 }
 
-__global__ void captureDenoiseData(
-    int num_paths,
-    ShadeableIntersection* intersections,
-    PathSegment* paths,
-    glm::vec3* normalsImg,
-    glm::vec3* albedoImg,
-    Material* materials,
-    int iter) 
-{
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (index < num_paths) {
-    
-        auto intersection = intersections[index];
-        int pixelIdx = paths[index].pixelIndex;
-
-        if (intersection.t > 0.0f) {
-        
-            Material mat = materials[intersection.materialId];
-            normalsImg[pixelIdx] = intersection.surfaceNormal;
-        
-            glm::vec3 albedo = mat.color;
-            if (mat.emittance > 0.0f) {
-                albedo = mat.color * mat.emittance;
-            }
-            albedoImg[pixelIdx] = albedo;
-        }
-    
-    }
-
-}
 #endif
 
 // Add the current iteration's output to the overall image
@@ -948,7 +1015,7 @@ struct usefulPath
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
  * of memory management
  */
-void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russianRoulette, bool enableBVH, bool antiAlias)
+void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russianRoulette, bool enableBVH, bool antiAlias, bool dof, Texture envMap)
 {
     const int traceDepth = hst_scene->state.traceDepth;
     const Camera& cam = hst_scene->state.camera;
@@ -996,7 +1063,7 @@ void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russian
 
     // TODO: perform one iteration of path tracing
 
-    generateRayFromCamera<<<blocksPerGrid2d, blockSize2d>>>(cam, iter, traceDepth, dev_paths, antiAlias);
+    generateRayFromCamera<<<blocksPerGrid2d, blockSize2d>>>(cam, iter, traceDepth, dev_paths, antiAlias, dof);
     checkCUDAError("generate camera ray");
 
     int depth = 0;
@@ -1005,8 +1072,6 @@ void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russian
 
     // --- PathSegment Tracing Stage ---
     // Shoot ray into scene, bounce between objects, push shading chunks
-
-
 
     bool iterationComplete = false;
     while (!iterationComplete)
@@ -1035,22 +1100,6 @@ void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russian
         cudaDeviceSynchronize();
         depth++;
 
-#if DENOISE
-        if (depth == 1) {
-            // Capture first bounce data for denoising
-            /*
-            captureDenoiseData << <numblocksPathSegmentTracing, blockSize1d >> > (
-                num_paths,
-                dev_intersections,
-                dev_paths,
-                dev_normalsImg,
-                dev_albedoImg,
-                dev_materials,
-                iter
-                );
-            */
-        }
-#endif
         // TODO:
         // --- Shading Stage ---
         // Shade path segments based on intersections and generate new rays by
@@ -1060,14 +1109,6 @@ void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russian
         // TODO: compare between directly shading the path segments and shading
         // path segments that have been reshuffled to be contiguous in memory.
 
-        /*
-        shadeFakeMaterial<<<numblocksPathSegmentTracing, blockSize1d>>>(
-            iter,
-            num_paths,
-            dev_intersections,
-            dev_paths,
-            dev_materials
-        );*/
 
         // sort by material before performing shading and sampling
         // you can use thrust for this
@@ -1092,7 +1133,8 @@ void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russian
             dev_materials,
             enableRR,
             dev_textures,
-            dev_texels
+            dev_texels,
+            envMap
 #if DENOISE
             ,dev_albedoImg,
             dev_normalsImg
@@ -1127,14 +1169,14 @@ void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russian
     if (iter % DENOISE_ITERATION == 0) {
         denoiseImage(cam.resolution, pixelcount);
         // Copy denoised result to display buffer
-        //cudaMemcpy(dev_displayImg, dev_denoiseImg, pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToDevice);
+
         float alpha = 0.0f;
         if (iter > 16) {
             alpha = float(iter - 16) / float(iterationCount - 16);
             if (alpha > 1.0f) alpha = 1.0f;
         }
 
-        // Blend noisy + denoised into dev_image (the one you display)
+        // Blend noisy + denoised into dev_image 
         int blockSize = 128;
         int numBlocks = (pixelcount + blockSize - 1) / blockSize;
         blendImages << <numBlocks, blockSize >> > (pixelcount, dev_image, dev_denoiseImg, dev_image, alpha);

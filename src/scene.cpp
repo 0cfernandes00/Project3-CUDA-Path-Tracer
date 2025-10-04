@@ -141,6 +141,43 @@ void Scene::BuildBVH(int N)
     return;
 }
 
+
+// Example CPU-side EXR loader into your texture system
+bool loadEXRAsTexture(const std::string& filename,
+    std::vector<glm::vec4>& texelsHost,
+    Texture& envTex)
+{
+
+    std::filesystem::path file = std::filesystem::current_path().parent_path() / "scenes" / "objs" / filename;
+    std::string filepath = file.string();
+
+    char* fileNew = new char[filepath.size() + 1];
+    std::strcpy(fileNew, filepath.c_str());
+
+    int width, height, channels;
+    float* hdrData = stbi_loadf(fileNew, &width, &height, &channels, 3);
+    if (!hdrData) {
+        std::cerr << "Failed to load EXR: " << filename << std::endl;
+        return false;
+    }
+
+    envTex.width = width;
+    envTex.height = height;
+    envTex.startPixelTex = texelsHost.size();  // offset in texel array
+
+    // Copy into texelsHost
+    texelsHost.reserve(texelsHost.size() + width * height);
+    for (int i = 0; i < width * height; i++) {
+        float r = hdrData[i * 3 + 0];
+        float g = hdrData[i * 3 + 1];
+        float b = hdrData[i * 3 + 2];
+        texelsHost.push_back(glm::vec4(r, g, b, 1.0f));
+    }
+
+    stbi_image_free(hdrData);
+    return true;
+}
+
 void Scene::loadTexture(const std::string filename) {
 
     std::filesystem::path file = std::filesystem::current_path().parent_path() / "scenes" / "objs" / filename;
@@ -312,6 +349,13 @@ void Scene::loadFromJSON(const std::string& jsonName)
             const std::string fileTex = p["TEXTURE"];
             newMaterial.diffuseTextureID = this->textures.size();
             loadTexture(fileTex);
+        }
+        else if (p["TYPE"] == "Envt")
+        {
+            const std::string fileTex = p["TEXTURE"];
+            newMaterial.diffuseTextureID = this->textures.size();
+            loadEXRAsTexture(fileTex, this->texels, this->envMap);
+            
         }
 
         MatNameToID[name] = materials.size();

@@ -53,6 +53,7 @@ bool russianRoulette = true;
 bool depthOField = false;
 bool enableBVH = true;
 bool antiAlias = true;
+bool dof = false;
 
 int width;
 int height;
@@ -285,7 +286,7 @@ void RenderImGui()
     bool prevRR = russianRoulette;
     bool prevBVH = enableBVH;
     bool prevAA = antiAlias;
-
+    bool prevDOF = dof;
 
     ImGui::Begin("Path Tracer Analytics");                  // Create a window called "Hello, world!" and append into it.
 
@@ -296,12 +297,14 @@ void RenderImGui()
     ImGui::Checkbox("Russisan Roulette Path Term", &russianRoulette);      // Edit bools storing our window open/close state
     ImGui::Checkbox("Enable BVH", &enableBVH);
     ImGui::Checkbox("Anti Aliasing", &antiAlias);
+    ImGui::Checkbox("DOF", &dof);
 
     // check if any booleans flipped and trigger rerender
     if (materialSorting != prevMatSort) camchanged = true;
     if (russianRoulette != prevRR) camchanged = true;
     if (enableBVH != prevBVH) camchanged = true;
     if (antiAlias != prevAA) camchanged = true;
+    if (dof != prevDOF) camchanged = true;
 
 
     //ImGui::Checkbox("Another Window", &show_another_window);
@@ -487,7 +490,7 @@ void runCuda()
 
         // execute the kernel
         int frame = 0;
-        pathtrace(pbo_dptr, frame, iteration, materialSorting, russianRoulette, enableBVH, antiAlias);
+        pathtrace(pbo_dptr, frame, iteration, materialSorting, russianRoulette, enableBVH, antiAlias, dof, scene->envMap);
 
         // unmap buffer object
         cudaGLUnmapBufferObject(pbo);
