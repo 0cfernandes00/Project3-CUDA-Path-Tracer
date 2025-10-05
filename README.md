@@ -7,7 +7,7 @@ CUDA Path Tracer - using 2 late days
   * [LinkedIn](https://www.linkedin.com/in/caroline-fernandes-0-/), [personal website](https://0cfernandes00.wixsite.com/visualfx)
 * Tested on: Windows 11, i9-14900HX @ 2.20GHz, Nvidia GeForce RTX 4070
 
-![](cornell.2025-10-04_23-55-03z.1088samp)
+![](cornell.2025-10-04_23-55-03z.1088samp.png)
 
 ### Features and Sections
 
@@ -30,8 +30,8 @@ Part 2 Features:
 
 ### Shading
 I implemented ideal diffuse and specular shading. Dffuse shading distributes light uniformly and specular materials distribute light in one direction.
-<img width="555" height="300" alt="image" src="https://github.com/user-attachments/assets/4b0928eb-f746-4c0d-8c66-b64b82889957" />
 
+<img width="555" height="300" alt="image" src="https://github.com/user-attachments/assets/4b0928eb-f746-4c0d-8c66-b64b82889957" />
 
 ### Stream Compaction
 Using thrust's library I was able to stream compact away paths that had terminated organizing the paths better in memory.
@@ -48,16 +48,19 @@ I implemented Stochastic sampled antialiasing by jittering the ray that was gene
 Russian Roulette Termination is a way of randomly terminating paths early that seem to have low throughput contributions
 
 ### Depth of Field
-<img src="img/cornell.2025-10-04_23-41-19z.900samp.png" width="400"> <img src="img/cornell.2025-10-04_23-55-03z.1088samp" width="400">
+
+<img src="img/cornell.2025-10-04_23-41-19z.900samp.png" width="400"> <img src="img/cornell.2025-10-04_23-55-03z.1088samp.png" width="400">
 
 ### Refraction
 
 ### Texture Mapping
 This was one of the last features I implemented and spent a good amount of time debugging uvs and textures.
-![](img/cornell.2025-10-03_17-17-22z.81samp.png)
+<img src="img/cornell.2025-10-03_17-17-22z.81samp.png" width="400">
 
 Environment Mapping
-![](img/cornell.2025-10-04_03-36-46z.1025samp.png)
+
+<img src="img/cornell.2025-10-04_03-36-46z.1025samp.png" width="400">
+
 
 ### Mesh Loading
 I implemented OBJ loading using the tinyOBJ library.
@@ -68,8 +71,9 @@ I implemented BVH and used AABB for the bounds test.
 ### Intel Image Denoise
 I integrated [Intel's Denoiser](https://github.com/RenderKit/oidn) which utilizes Deep Learning methods to converge the results faster. This feature provided a much nicer image but it effectively blurred hard edges in geometry. I'd be interested to test out the optimal number of denoise iterations get rid of the noise and still preserve hard edges.
 
-![](img/cornell.2025-10-03_03-10-42z.1120samp.png)
-![](img/cornell.2025-10-03_05-08-47z.718samp.png)
+<img src="img/cornell.2025-10-03_03-10-42z.1120samp.png" width="400"> <img src="img/cornell.2025-10-03_05-08-47z.718samp.png" width="400">
 
 ### Bloopers
-![](cornell.2025-10-04_22-02-03z.6samp.png)
+
+<img src="img/cornell.2025-10-04_22-02-03z.6samp.png" width="400">
+
