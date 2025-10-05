@@ -7,7 +7,7 @@ CUDA Path Tracer - using 2 late days
   * [LinkedIn](https://www.linkedin.com/in/caroline-fernandes-0-/), [personal website](https://0cfernandes00.wixsite.com/visualfx)
 * Tested on: Windows 11, i9-14900HX @ 2.20GHz, Nvidia GeForce RTX 4070
 
-![](cornell.2025-10-04_23-55-03z.1088samp.png)
+![](img/cornell.2025-10-04_23-55-03z.1088samp.png)
 
 ### Features and Sections
 
