@@ -41,8 +41,8 @@ I had originally expected material sorting to improve performance but it doesn't
 
 ### Anti-Aliasing
 I implemented Stochastic sampled antialiasing by jittering the ray that was generated from the camera with a small offset in both the x & y directions.
-![](img/aliased_close.png)
-![](img/antialiased_closeup.png)
+
+![](img/aliased_close.png) ![](img/antialiased_closeup.png)
 
 ### Russian Roulette Termination
 Russian Roulette Termination is a way of randomly terminating paths early that seem to have low throughput contributions
