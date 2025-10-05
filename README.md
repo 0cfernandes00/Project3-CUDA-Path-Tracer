@@ -8,7 +8,7 @@ CUDA Path Tracer - using 2 late days
 * Tested on: Windows 11, i9-14900HX @ 2.20GHz, Nvidia GeForce RTX 4070
 
 
-<img src="img/cornell.2025-10-05_20-34-03z.634samp.png" width="600">
+<img src="img/corrected_gamma.png" width="600">
 <img src="img/cornell.2025-10-04_23-55-03z.1088samp.png" width="600">
 
 ### Features and Sections
