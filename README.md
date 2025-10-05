@@ -30,7 +30,7 @@ Part 2 Features:
 
 ### Shading
 I implemented ideal diffuse and specular shading. Dffuse shading distributes light uniformly and specular materials distribute light in one direction.
-<img width="927" height="500" alt="image" src="https://github.com/user-attachments/assets/4b0928eb-f746-4c0d-8c66-b64b82889957" />
+<img width="555" height="300" alt="image" src="https://github.com/user-attachments/assets/4b0928eb-f746-4c0d-8c66-b64b82889957" />
 
 
 ### Stream Compaction
@@ -42,15 +42,13 @@ I had originally expected material sorting to improve performance but it doesn't
 ### Anti-Aliasing
 I implemented Stochastic sampled antialiasing by jittering the ray that was generated from the camera with a small offset in both the x & y directions.
 
-<img src="img/aliased_close.png" width="400">
-<img src="antialiased_closeup.png" width="400">
+<img src="img/aliased_close.png" width="400"> <img src="img/antialiased_closeup.png" width="400">
 
 ### Russian Roulette Termination
 Russian Roulette Termination is a way of randomly terminating paths early that seem to have low throughput contributions
 
 ### Depth of Field
-<img src="img/cornell.2025-10-04_23-41-19z.900samp.png" width="400"> 
-<img src="cornell.2025-10-04_23-55-03z.1088samp" width="400">
+<img src="img/cornell.2025-10-04_23-41-19z.900samp.png" width="400"> <img src="img/cornell.2025-10-04_23-55-03z.1088samp" width="400">
 
 ### Refraction
 
