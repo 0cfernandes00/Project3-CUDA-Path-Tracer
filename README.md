@@ -7,6 +7,7 @@ CUDA Path Tracer - using 2 late days
   * [LinkedIn](https://www.linkedin.com/in/caroline-fernandes-0-/), [personal website](https://0cfernandes00.wixsite.com/visualfx)
 * Tested on: Windows 11, i9-14900HX @ 2.20GHz, Nvidia GeForce RTX 4070
 
+![](cornell.2025-10-04_23-55-03z.1088samp)
 
 ### Features and Sections
 
@@ -20,6 +21,7 @@ Core Features:
 
 Part 2 Features:
 - [Russian Roulette Termination](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#russian-roulette-termination)
+- [Depth of Field](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#depth-of-field)
 - [Refraction](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#refraction)
 - [Texture Mapping](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#texture-mapping)
 - [Mesh Loading](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#mesh-loading)
@@ -39,14 +41,20 @@ I had originally expected material sorting to improve performance but it doesn't
 
 ### Anti-Aliasing
 I implemented Stochastic sampled antialiasing by jittering the ray that was generated from the camera with a small offset in both the x & y directions.
+![](img/aliased_close.png)
+![](img/antialiased_closeup.png)
 
 ### Russian Roulette Termination
 Russian Roulette Termination is a way of randomly terminating paths early that seem to have low throughput contributions
+
+### Depth of Field
+![](img/cornell.2025-10-04_23-41-19z.900samp.png)
 
 ### Refraction
 
 ### Texture Mapping
 This was one of the last features I implemented and spent a good amount of time debugging uvs and textures.
+![](img/cornell.2025-10-03_17-17-22z.81samp.png)
 
 Environment Mapping
 ![](img/cornell.2025-10-04_03-36-46z.1025samp.png)
@@ -60,3 +68,8 @@ I implemented BVH and used AABB for the bounds test.
 ### Intel Image Denoise
 I integrated [Intel's Denoiser](https://github.com/RenderKit/oidn) which utilizes Deep Learning methods to converge the results faster. This feature provided a much nicer image but it effectively blurred hard edges in geometry. I'd be interested to test out the optimal number of denoise iterations get rid of the noise and still preserve hard edges.
 
+![](img/cornell.2025-10-03_03-10-42z.1120samp.png)
+![](img/cornell.2025-10-03_05-08-47z.718samp.png)
+
+### Bloopers
+![](cornell.2025-10-04_22-02-03z.6samp.png)
