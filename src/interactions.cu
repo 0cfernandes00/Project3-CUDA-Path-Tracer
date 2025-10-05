@@ -54,57 +54,61 @@ __host__ __device__ void scatterRay(
     // TODO: implement this.
     // A basic implementation of pure-diffuse shading will just call the
     // calculateRandomDirectionInHemisphere defined above.
+    const float RAY_EPSILON = 0.0001f;
+    
+    if (m.hasRefractive) {
+        // Glass/Dielectric material
+        glm::vec3 wo = pathSegment.ray.direction; // incoming ray (already normalized)
 
-    /*
-    if (m.hasReflective && m.hasRefractive) {
+        float eta1 = 1.0f; // air
+        float eta2 = m.indexOfRefraction; // glass (typically 1.5)
 
-        // Ideal DIELECTRIC interaction
-
-        glm::vec3 wo = glm::normalize(pathSegment.ray.direction);
-        float n1 = 1.0f; // air
-        float n2 = m.indexOfRefraction; // material
-        n2 = 1.1f;
         glm::vec3 n = normal;
-        float cosTheta1 = glm::dot(-wo, n);
-        if (cosTheta1 < 0) { // inside the surface
-            n = -normal;
-            cosTheta1 = glm::dot(-wo, n);
-            float temp = n1;
-            n1 = n2;
-            n2 = temp;
+        float cosTheta = glm::dot(-wo, n); // Note the negative: angle between -wo and normal
+
+        // Determine if entering or exiting the surface
+        bool entering = cosTheta > 0.0f;
+        if (!entering) {
+            // Exiting: flip normal and swap IORs
+            n = -n;
+            cosTheta = -cosTheta;
+            float temp = eta1;
+            eta1 = eta2;
+            eta2 = temp;
         }
-        float nRatio = n1 / n2;
-        float sin2Theta2 = nRatio * nRatio * (1 - cosTheta1 * cosTheta1);
-        if (sin2Theta2 > 1) { // total internal reflection
-            glm::vec3 wi = glm::reflect(wo, n);
-            pathSegment.ray.origin = intersect + 0.001f * n;
-            pathSegment.ray.direction = glm::normalize(wi);
-            pathSegment.remainingBounces--;
+
+        float etaRatio = eta1 / eta2;
+
+        // Check for total internal reflection
+        float sin2Theta2 = etaRatio * etaRatio * (1.0f - cosTheta * cosTheta);
+
+        if (sin2Theta2 >= 1.0f) {
+            // Total internal reflection
+            pathSegment.ray.direction = glm::reflect(wo, n);
+            pathSegment.ray.origin = intersect + RAY_EPSILON * n;
             return;
         }
-        float cosTheta2 = sqrt(1 - sin2Theta2);
-        float R0 = (n1 - n2) * (n1 - n2) / ((n1 + n2) * (n1 + n2));
-        float R = R0 + (1 - R0) * pow((1 - cosTheta1), 5);
+
+        // Schlick's approximation for Fresnel
+        float R0 = (eta1 - eta2) / (eta1 + eta2);
+        R0 = R0 * R0;
+        float R = R0 + (1.0f - R0) * powf(1.0f - cosTheta, 5.0f);
+
+        // Randomly choose reflection or refraction based on Fresnel
         thrust::uniform_real_distribution<float> u01(0, 1);
-        if (u01(rng) < R) { // reflect
-            glm::vec3 wi = glm::reflect(wo, n);
-            pathSegment.ray.origin = intersect + 0.001f * n;
-            pathSegment.ray.direction = glm::normalize(wi);
-            pathSegment.remainingBounces--;
-            return;
+        if (u01(rng) < R) {
+            // Reflect
+            pathSegment.ray.direction = glm::reflect(wo, n);
+            pathSegment.ray.origin = intersect + RAY_EPSILON * n;
         }
-        else { // refract
-            glm::vec3 wi; // = nRatio * wo + (nRatio * cosTheta1 - cosTheta2) * n;
-			wi = glm::refract(wo, n, nRatio);
-            pathSegment.ray.origin = intersect - 0.001f * n;
-            pathSegment.ray.direction = glm::normalize(wi);
-            pathSegment.remainingBounces--;
-            return;
+        else {
+            // Refract
+            pathSegment.ray.direction = glm::refract(wo, n, etaRatio);
+            // When refracting INTO the surface, move slightly inside (negative offset)
+            pathSegment.ray.origin = intersect - RAY_EPSILON * n;
         }
-
-
+        return;
     }
-    */
     if (m.hasReflective) {
 
         // Perfectly SPECULAR interaction
@@ -114,7 +118,7 @@ __host__ __device__ void scatterRay(
         pathSegment.ray.origin = intersect + 0.001f * normal;
         pathSegment.ray.direction = glm::normalize(wi);
         pathSegment.remainingBounces--;
-        //return;
+        return;
 	}
     else {
         // Perfectly DIFFUSE interaction

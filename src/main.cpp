@@ -54,6 +54,7 @@ bool depthOField = false;
 bool enableBVH = true;
 bool antiAlias = true;
 bool dof = false;
+bool envMap = false;
 
 int width;
 int height;
@@ -287,6 +288,7 @@ void RenderImGui()
     bool prevBVH = enableBVH;
     bool prevAA = antiAlias;
     bool prevDOF = dof;
+    bool prevENV = envMap;
 
     ImGui::Begin("Path Tracer Analytics");                  // Create a window called "Hello, world!" and append into it.
 
@@ -298,6 +300,7 @@ void RenderImGui()
     ImGui::Checkbox("Enable BVH", &enableBVH);
     ImGui::Checkbox("Anti Aliasing", &antiAlias);
     ImGui::Checkbox("DOF", &dof);
+    ImGui::Checkbox("ENV MAP", &envMap);
 
     // check if any booleans flipped and trigger rerender
     if (materialSorting != prevMatSort) camchanged = true;
@@ -305,6 +308,7 @@ void RenderImGui()
     if (enableBVH != prevBVH) camchanged = true;
     if (antiAlias != prevAA) camchanged = true;
     if (dof != prevDOF) camchanged = true;
+    if (envMap != prevENV) camchanged = true;
 
 
     //ImGui::Checkbox("Another Window", &show_another_window);
@@ -490,7 +494,7 @@ void runCuda()
 
         // execute the kernel
         int frame = 0;
-        pathtrace(pbo_dptr, frame, iteration, materialSorting, russianRoulette, enableBVH, antiAlias, dof, scene->envMap);
+        pathtrace(pbo_dptr, frame, iteration, materialSorting, russianRoulette, enableBVH, antiAlias, dof, scene->envMap, envMap);
 
         // unmap buffer object
         cudaGLUnmapBufferObject(pbo);

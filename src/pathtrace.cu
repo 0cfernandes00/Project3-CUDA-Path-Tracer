@@ -325,29 +325,94 @@ __host__ __device__ glm::vec3 barycentricCoords(
     return glm::vec3(s1, s2, s3);
 }
 
+__host__ __device__ bool MollerTrumboreIntersect(
+    const glm::vec3& rayOrigin,
+    const glm::vec3& rayDir,
+    const glm::vec3& v0,
+    const glm::vec3& v1,
+    const glm::vec3& v2,
+    float& t,
+    float& u,
+    float& v)
+{
+    const float TRI_EPSILON = 0.0000001f;
 
-__host__ __device__ bool IntersectAABB(Ray& ray, glm::vec3 boxMin, glm::vec3 boxMax, float t)
+    glm::vec3 edge1 = v1 - v0;
+    glm::vec3 edge2 = v2 - v0;
+    glm::vec3 h = glm::cross(rayDir, edge2);
+    float a = glm::dot(edge1, h);
+
+    // Ray is parallel to triangle
+    if (a > -TRI_EPSILON && a < TRI_EPSILON)
+        return false;
+
+    float f = 1.0f / a;
+    glm::vec3 s = rayOrigin - v0;
+    u = f * glm::dot(s, h);
+
+    if (u < 0.0f || u > 1.0f)
+        return false;
+
+    glm::vec3 q = glm::cross(s, edge1);
+    v = f * glm::dot(rayDir, q);
+
+    if (v < 0.0f || u + v > 1.0f)
+        return false;
+
+    t = f * glm::dot(edge2, q);
+
+    return t > EPSILON;
+}
+
+
+__host__ __device__ bool IntersectAABB(Ray& ray, glm::vec3 invDir, glm::vec3 boxMin, glm::vec3 boxMax, float t)
 {
 
     glm::vec3 dir = ray.direction;
     glm::vec3 origin = ray.origin;
 
-    float tx1 = (boxMin.x - origin.x) / dir.x;
-    float tx2 = (boxMax.x - origin.x) / dir.x;
+    float tx1 = (boxMin.x - origin.x) * invDir.x;
+    float tx2 = (boxMax.x - origin.x) * invDir.x;
     float tmin = fminf(tx1, tx2), tmax = fmaxf(tx1, tx2);
 
-    float ty1 = (boxMin.y - origin.y) / dir.y;
-    float ty2 = (boxMax.y - origin.y) / dir.y;
+    float ty1 = (boxMin.y - origin.y) * invDir.y;
+    float ty2 = (boxMax.y - origin.y) * invDir.y;
 
     tmin = fmaxf(tmin, fminf(ty1, ty2)); tmax = fminf(tmax, fmaxf(ty1, ty2));
 
-    float tz1 = (boxMin.z - origin.z) / dir.z;
-    float tz2 = (boxMax.z - origin.z) / dir.z;
+    float tz1 = (boxMin.z - origin.z) * invDir.z;
+    float tz2 = (boxMax.z - origin.z) * invDir.z;
 
     tmin = fmaxf(tmin, fminf(tz1, tz2)); tmax = fminf(tmax, fmaxf(tz1, tz2));
 
     return tmax >= tmin && tmin < t && tmax > 0.f;
 
+}
+
+__host__ __device__ float IntersectAABB_GetTmin(Ray& ray, glm::vec3 invDir, glm::vec3 boxMin,
+    glm::vec3 boxMax, float t_max)
+{
+    glm::vec3 dir = ray.direction;
+    glm::vec3 origin = ray.origin;
+
+    float tx1 = (boxMin.x - origin.x) * invDir.x;
+    float tx2 = (boxMax.x - origin.x) * invDir.x;
+    float tmin = fminf(tx1, tx2), tmax = fmaxf(tx1, tx2);
+
+    float ty1 = (boxMin.y - origin.y) * invDir.y;
+    float ty2 = (boxMax.y - origin.y) * invDir.y;
+    tmin = fmaxf(tmin, fminf(ty1, ty2));
+    tmax = fminf(tmax, fmaxf(ty1, ty2));
+
+    float tz1 = (boxMin.z - origin.z)  * invDir.z;
+    float tz2 = (boxMax.z - origin.z)  * invDir.z;
+    tmin = fmaxf(tmin, fminf(tz1, tz2));
+    tmax = fminf(tmax, fmaxf(tz1, tz2));
+
+    if (tmax >= tmin && tmin < t_max && tmax > 0.f) {
+        return tmin;  // Return entry distance
+    }
+    return FLT_MAX;  // No hit
 }
 
 
@@ -366,19 +431,22 @@ __host__ __device__ float IntersectBVH(
 {
 
     float closest_t = FLT_MAX;
+    glm::vec3 invDir = 1.0f / ray.direction;
 
-    int stack[128];
+
+    int stack[32];
     int stack_ptr = 0;
     stack[stack_ptr++] = 0;
 
     int tri_idx_near = -1;
+    glm::vec3 coords_tmp;
 
     while (stack_ptr > 0) {
         int node_idx = stack[--stack_ptr];
         const BVHNode& node = nodes[node_idx];
 
-        
-        if (!IntersectAABB(ray, node.aabbMin, node.aabbMax, t_max)) {
+
+        if (!IntersectAABB(ray, invDir, node.aabbMin, node.aabbMax, closest_t)) {
             continue;
         }
         
@@ -388,17 +456,48 @@ __host__ __device__ float IntersectBVH(
                 const Triangle& tri = triangles[triIdx];
                 glm::vec3 baryCoords;
 
-                bool hit = glm::intersectRayTriangle(ray.origin,ray.direction,tri.v1.m_pos, tri.v2.m_pos, tri.v3.m_pos, baryCoords);
-                float out_t = baryCoords.z;
-                if (hit && out_t > 0.0f && out_t < closest_t) {
-                    closest_t = out_t;
+
+                float t, u, v;
+                bool hit = MollerTrumboreIntersect(
+                    ray.origin, ray.direction,
+                    tri.v1.m_pos, tri.v2.m_pos, tri.v3.m_pos,
+                    t, u, v
+                );
+                if (hit && t > 0.0f && t < closest_t) {
+                    closest_t = t;
                     tri_idx_near = triIdx;
+                    coords_tmp = glm::vec3(u,v,t);
                 }
             }
         }
         else {
-            stack[stack_ptr++] = node.leftChild + 1;
-            stack[stack_ptr++] = node.leftChild;
+            int leftChild = node.leftChild;
+            int rightChild = leftChild + 1;
+
+            float tminLeft = IntersectAABB_GetTmin(ray, invDir, nodes[leftChild].aabbMin,
+                nodes[leftChild].aabbMax, closest_t);
+            float tminRight = IntersectAABB_GetTmin(ray, invDir, nodes[rightChild].aabbMin,
+                nodes[rightChild].aabbMax, closest_t);
+
+            bool hitLeft = (tminLeft < closest_t);
+            bool hitRight = (tminRight < closest_t);
+
+            if (hitLeft && hitRight) {
+                if (tminLeft < tminRight) {
+                    stack[stack_ptr++] = rightChild;
+                    stack[stack_ptr++] = leftChild;
+                }
+                else {
+                    stack[stack_ptr++] = leftChild;
+                    stack[stack_ptr++] = rightChild;
+                }
+            }
+            else if (hitLeft) {
+                stack[stack_ptr++] = leftChild;
+            }
+            else if (hitRight) {
+                stack[stack_ptr++] = rightChild;
+            }
         }
     }
 
@@ -415,12 +514,14 @@ __host__ __device__ float IntersectBVH(
 
     matId = tri_near.materialId;
 
-    // Calculate barycentric coordinates
-    glm::vec3 bary = barycentricCoords(intersectP, v1.m_pos, v2.m_pos, v3.m_pos); 
+    float u = coords_tmp.x;
+    float v = coords_tmp.y;
+    float w = 1.0f - u - v;
+
 
     // Interpolate normals
-    normal = glm::normalize(bary.x * v1.m_normal + bary.y * v2.m_normal + bary.z * v3.m_normal); 
-    uv = bary.x * v1.m_uv + bary.y * v2.m_uv + bary.z * v3.m_uv; 
+    normal = glm::normalize(w * v1.m_normal + u * v2.m_normal + v * v3.m_normal);
+    uv = w * v1.m_uv + u * v2.m_uv + v * v3.m_uv;
 
 
     return glm::length(ray.origin - intersectP);
@@ -517,19 +618,22 @@ __global__ void computeIntersections(
                 Vertex& v2 = verts[vertIdx + 1];
                 Vertex& v3 = verts[vertIdx + 2];
                 glm::vec3 baryCoords;
-                bool hit = glm::intersectRayTriangle(pathSegment.ray.origin, pathSegment.ray.direction, v1.m_pos, v2.m_pos, v3.m_pos, baryCoords);
-                t = baryCoords.z;
 
+                float t, u, v;
+                bool hit = MollerTrumboreIntersect(
+                    pathSegment.ray.origin, pathSegment.ray.direction,
+                    v1.m_pos, v2.m_pos, v3.m_pos,
+                    t, u, v
+                );
+ 
                 if (hit && t > 0.0f && t_min > t)
                 {
                     t_min = t;
                     hit_geom_index = obj_hit;
                     intersect_point = pathSegment.ray.origin + (pathSegment.ray.direction * t_min);
-
-                    glm::vec3 bary = barycentricCoords(intersect_point, v1.m_pos, v2.m_pos, v3.m_pos); // Calculate barycentric coordinates
-                    normal = glm::normalize(bary.x * v1.m_normal + bary.y * v2.m_normal + bary.z * v3.m_normal); // Interpolate normals
-                    uv = bary.x * v1.m_uv + bary.y * v2.m_uv + bary.z * v3.m_uv; // Interpolate uv
-                    //tmp_tangent = bary.x * v1.tangent + bary.y * v2.tangent + bary.z * v3.tangent;
+                    
+                    normal = glm::normalize(u * v1.m_normal + v * v2.m_normal + t * v3.m_normal); // Interpolate normals
+                    uv = u * v1.m_uv + v * v2.m_uv + t * v3.m_uv; // Interpolate uv
                 }
             }
 
@@ -669,7 +773,8 @@ __global__ void shadeDiffuseMaterial(
     bool enableRR,
     Texture* textures,
     glm::vec4* texels,
-    Texture envTex
+    Texture envTex,
+    bool envtTrue
 #if DENOISE
     , glm::vec3* dev_albedoImg,
     glm::vec3* dev_normalsImg
@@ -683,14 +788,20 @@ __global__ void shadeDiffuseMaterial(
 
     // No intersection: make black and terminate
     if (intersection.t <= 0.0f) {
-        glm::vec3 envColor = sampleEnvMapBilinear(pathSegments[idx].ray.direction, envTex, texels);
-        pathSegments[idx].color *= envColor;
+        if (envtTrue) {
+            glm::vec3 envColor = sampleEnvMapBilinear(pathSegments[idx].ray.direction, envTex, texels);
+            pathSegments[idx].color *= envColor;
 
+            pathSegments[idx].remainingBounces = 0;
+            return;
+        }
+        else {
+            pathSegments[idx].color = glm::vec3(0.0f);
+            pathSegments[idx].remainingBounces = 0;
+            return;
+        }
 
-        // add environment map
-        //pathSegments[idx].color = glm::vec3(0.0f);
-        pathSegments[idx].remainingBounces = 0;
-        return;
+        
     }
 
     // If path already dead, nothing to do
@@ -744,6 +855,15 @@ __global__ void shadeDiffuseMaterial(
 
         materialColor = texColor;
 
+    }
+
+    if (material.hasReflective || material.hasRefractive) {
+        // Perfect specular - no BRDF evaluation, throughput stays same
+        pathSegments[idx].color *= material.color;
+
+        scatterRay(pathSegments[idx], intersectPos, normal, material, rng);
+        pathSegments[idx].remainingBounces--;
+        return;
     }
 
     // Scatter ray: produce new direction in hemisphere about the normal
@@ -804,132 +924,6 @@ __global__ void shadeDiffuseMaterial(
     }
 
 }
-
-
-/*
-__global__ void shadeDiffuseMaterial(
-    int iter,
-    int num_paths,
-    ShadeableIntersection* shadeableIntersections,
-    PathSegment* pathSegments,
-    Material* materials,
-    bool enableRR,
-    Texture* textures,
-    glm::vec4* texels,
-    Texture envTex         // <-- NEW: pass in your HDRI as a Texture
-#if DENOISE
-    ,glm::vec3* dev_albedoImg,
-    glm::vec3* dev_normalsImg
-#endif
-)
-{
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= num_paths) return;
-
-    ShadeableIntersection intersection = shadeableIntersections[idx];
-
-    if (intersection.t > 0.0f) // hit geometry
-    {
-        thrust::default_random_engine rng =
-            makeSeededRandomEngine(iter, idx, pathSegments[idx].remainingBounces);
-        thrust::uniform_real_distribution<float> u01(0, 1);
-
-        Material material = materials[intersection.materialId];
-        glm::vec3 materialColor = material.color;
-
-        if (pathSegments[idx].remainingBounces <= 0) return;
-
-        int texID = material.diffuseTextureID;
-
-        // Light source
-        if (material.emittance > 0.0f) {
-            pathSegments[idx].color *= (materialColor * material.emittance);
-            pathSegments[idx].remainingBounces = 0;
-            return;
-        }
-
-        // Diffuse surface
-        glm::vec3 normal = intersection.surfaceNormal;
-        glm::vec3 intersectPos =
-            pathSegments[idx].ray.origin + pathSegments[idx].ray.direction * intersection.t;
-
-        if (texID >= 0) {
-            Texture tex = textures[texID];
-
-            int iu = glm::clamp(float(intersection.uv.x * tex.width), 0.f, tex.width - 1);
-            int iv = glm::clamp(float(intersection.uv.y * tex.height), 0.f, tex.height - 1);
-
-            int idxTex = tex.startPixelTex + iv * tex.width + iu;
-            glm::vec4 texel = texels[idxTex];
-            glm::vec3 texColor = glm::vec3(texel.x, texel.y, texel.z);
-
-            materialColor = texColor;
-            material.color = materialColor;
-        }
-
-        // Scatter new ray
-        scatterRay(pathSegments[idx], intersectPos, normal, material, rng);
-        glm::vec3 wi = pathSegments[idx].ray.direction;
-        float cosTheta = glm::dot(normal, wi);
-
-        if (cosTheta <= 0.0f) {
-            pathSegments[idx].remainingBounces = 0;
-            return;
-        }
-
-        const float INV_PI = 1.0f / M_PI;
-        glm::vec3 bsdf = materialColor * INV_PI;
-        float pdf = cosTheta * INV_PI;
-
-        if (pdf > 0.0f) {
-            pathSegments[idx].color *= (bsdf * cosTheta) / pdf;
-        }
-        else {
-            pathSegments[idx].remainingBounces = 0;
-            return;
-        }
-
-        pathSegments[idx].remainingBounces--;
-
-#if DENOISE
-        dev_albedoImg[pathSegments[idx].pixelIndex] = materialColor;
-        dev_normalsImg[pathSegments[idx].pixelIndex] = intersection.surfaceNormal;
-#endif
-
-        if (enableRR) {
-            float lMax = fmaxf(pathSegments[idx].color.r,
-                fmaxf(pathSegments[idx].color.g, pathSegments[idx].color.b));
-
-            thrust::uniform_real_distribution<float> u25(0, 0.25f);
-            float probStart = u25(rng);
-
-            float pTerm = (probStart > 1.0f - lMax) ? probStart : 1.0f - lMax;
-            float probSurvive = 1.0f - pTerm;
-
-            if (u01(rng) < pTerm) {
-                pathSegments[idx].remainingBounces = 0;
-                return;
-            }
-            else {
-                pathSegments[idx].color /= probSurvive;
-            }
-        }
-    }
-    else { // MISS → environment
-        glm::vec3 envColor = sampleEnvMap(pathSegments[idx].ray.direction, envTex, texels);
-        pathSegments[idx].color *= envColor;
-        
-        if (useEnvMap) {
-            glm::vec3 envColor = sampleEnvMap(pathSegments[idx].ray.direction, envTex, texels);
-            pathSegments[idx].color *= envColor;
-        }
-        else {
-            pathSegments[idx].color = glm::vec3(0.0f); // black background
-        }
-        
-    }
-}
-*/
 
 #if DENOISE
 
@@ -1015,7 +1009,7 @@ struct usefulPath
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
  * of memory management
  */
-void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russianRoulette, bool enableBVH, bool antiAlias, bool dof, Texture envMap)
+void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russianRoulette, bool enableBVH, bool antiAlias, bool dof, Texture envMap, bool envtTrue)
 {
     const int traceDepth = hst_scene->state.traceDepth;
     const Camera& cam = hst_scene->state.camera;
@@ -1134,7 +1128,8 @@ void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russian
             enableRR,
             dev_textures,
             dev_texels,
-            envMap
+            envMap,
+            envtTrue
 #if DENOISE
             ,dev_albedoImg,
             dev_normalsImg
