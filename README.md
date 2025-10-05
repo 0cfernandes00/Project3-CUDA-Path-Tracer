@@ -7,7 +7,9 @@ CUDA Path Tracer - using 2 late days
   * [LinkedIn](https://www.linkedin.com/in/caroline-fernandes-0-/), [personal website](https://0cfernandes00.wixsite.com/visualfx)
 * Tested on: Windows 11, i9-14900HX @ 2.20GHz, Nvidia GeForce RTX 4070
 
-![](img/cornell.2025-10-04_23-55-03z.1088samp.png)
+
+<img src="img/cornell.2025-10-05_20-34-03z.634samp.png" width="600">
+<img src="img/cornell.2025-10-04_23-55-03z.1088samp.png" width="600">
 
 ### Features and Sections
 
@@ -72,9 +74,9 @@ I implemented a Naive BVH and used AABB for the bounds test. This was a diffiucl
 ### Intel Image Denoise
 I integrated [Intel's Denoiser](https://github.com/RenderKit/oidn) which utilizes Deep Learning methods to converge the results faster. This feature provided a much nicer image but it effectively blurred hard edges in geometry. I'd be interested to test out the optimal number of denoise iterations get rid of the noise and still preserve hard edges.
 
-<img src="img/cornell.2025-10-03_03-10-42z.1120samp.png" width="400"> <img src="img/cornell.2025-10-03_05-08-47z.718samp.png" width="400">
+<img src="img/noise_closeup.png" width="500"> <img src="img/denoise_closeup.png" width="500">
 
 ### Bloopers
-
+<img src="img/cornell.2025-10-05_20-32-15z.87samp.png" width="400">
 <img src="img/cornell.2025-10-04_22-02-03z.6samp.png" width="400">
 
