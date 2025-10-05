@@ -1,4 +1,4 @@
-CUDA Path Tracer - using 1 late day
+CUDA Path Tracer - using 2 late days
 ================
 
 **University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 3**
@@ -6,7 +6,7 @@ CUDA Path Tracer - using 1 late day
 * Caroline Fernandes
   * [LinkedIn](https://www.linkedin.com/in/caroline-fernandes-0-/), [personal website](https://0cfernandes00.wixsite.com/visualfx)
 * Tested on: Windows 11, i9-14900HX @ 2.20GHz, Nvidia GeForce RTX 4070
-![](img/cornell.2025-10-04_03-36-46z.1025samp.png)
+
 
 ### Features and Sections
 
@@ -20,6 +20,7 @@ Core Features:
 
 Part 2 Features:
 - [Russian Roulette Termination](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#russian-roulette-termination)
+- [Refraction](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#refraction)
 - [Texture Mapping](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#texture-mapping)
 - [Mesh Loading](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#mesh-loading)
 - [Bounding Volume Hierarchies](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#bouding-volume-hierarchies)
@@ -42,10 +43,13 @@ I implemented Stochastic sampled antialiasing by jittering the ray that was gene
 ### Russian Roulette Termination
 Russian Roulette Termination is a way of randomly terminating paths early that seem to have low throughput contributions
 
+### Refraction
+
 ### Texture Mapping
 This was one of the last features I implemented and spent a good amount of time debugging uvs and textures.
 
 Environment Mapping
+![](img/cornell.2025-10-04_03-36-46z.1025samp.png)
 
 ### Mesh Loading
 I implemented OBJ loading using the tinyOBJ library.
@@ -54,4 +58,5 @@ I implemented OBJ loading using the tinyOBJ library.
 I implemented BVH and used AABB for the bounds test.
 
 ### Intel Image Denoise
-I integrated [Intel's Denoiser](https://github.com/RenderKit/oidn) which utilizes Deep Learning methods to converge the results faster. This feature provided a much nicer image but it effectively blurred hard edges in geometry. One thing I'd be interested to do is test out is the optimal number of denoise iterations that preserve hard edges.
+I integrated [Intel's Denoiser](https://github.com/RenderKit/oidn) which utilizes Deep Learning methods to converge the results faster. This feature provided a much nicer image but it effectively blurred hard edges in geometry. I'd be interested to test out the optimal number of denoise iterations get rid of the noise and still preserve hard edges.
+
