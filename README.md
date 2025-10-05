@@ -11,25 +11,25 @@ CUDA Path Tracer - using 2 late days
 
 ### Features and Sections
 
-The goal of this project was to implement a CUDA-based path tracer. The base code was provided which implemented the openGL interop, previewing and saving images, as well as loading a scene description file.
+The goal of this project was to implement a CUDA-based path tracer. The base code provided to me had implemented the openGL interop, previewing and saving images, as well as loading a scene description file.
 
 Core Features:
-- [Shading](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#shading)
-- [Stream Compaction](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#stream-compaction)
-- [Material Sorting](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#material-sorting)
-- [Anti-Aliasing](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#anti-aliasing)
+- [Shading](https://github.com/0cfernandes00/Project3-CUDA-Path-Tracer/blob/main/README.md#shading)
+- [Stream Compaction](https://github.com/0cfernandes00/Project3-CUDA-Path-Tracer/blob/main/README.md#stream-compaction)
+- [Material Sorting](https://github.com/0cfernandes00/Project3-CUDA-Path-Tracer/blob/main/README.md#material-sorting)
+- [Anti-Aliasing](https://github.com/0cfernandes00/Project3-CUDA-Path-Tracer/blob/main/README.md#anti-aliasing)
 
 Part 2 Features:
-- [Russian Roulette Termination](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#russian-roulette-termination)
+- [Russian Roulette Termination](https://github.com/0cfernandes00/Project3-CUDA-Path-Tracer/blob/main/README.md#russian-roulette-termination)
 - [Depth of Field](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#depth-of-field)
-- [Refraction](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#refraction)
-- [Texture Mapping](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#texture-mapping)
-- [Mesh Loading](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#mesh-loading)
-- [Bounding Volume Hierarchies](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#bouding-volume-hierarchies)
-- [Intel Image Denoise](https://github.com/0cfernandes00/Project3-CUDA-Path-Trace/blob/main/README.md#intel-image-denoise)
+- [Refraction](https://github.com/0cfernandes00/Project3-CUDA-Path-Tracer/blob/main/README.md#refraction)
+- [Texture Mapping](https://github.com/0cfernandes00/Project3-CUDA-Path-Tracer/blob/main/README.md#texture-mapping)
+- [Mesh Loading](https://github.com/0cfernandes00/Project3-CUDA-Path-Tracer/blob/main/README.md#mesh-loading)
+- [Bounding Volume Hierarchies](https://github.com/0cfernandes00/Project3-CUDA-Path-Tracer/blob/main/README.md#bounding-volume-hierarchies)
+- [Intel Image Denoise](https://github.com/0cfernandes00/Project3-CUDA-Path-Tracer/blob/main/README.md#intel-image-denoise)
 
 ### Shading
-I implemented ideal diffuse and specular shading. Dffuse shading distributes light uniformly and specular materials distribute light in one direction.
+I implemented ideal diffuse and specular shading. Diffuse shading distributes light uniformly and specular materials distribute light in one direction.
 
 <img width="555" height="300" alt="image" src="https://github.com/user-attachments/assets/4b0928eb-f746-4c0d-8c66-b64b82889957" />
 
@@ -40,18 +40,19 @@ Using thrust's library I was able to stream compact away paths that had terminat
 I had originally expected material sorting to improve performance but it doesn't seem to have a huge speedup. This could potentially be because the way it's sorting the materials is too expensive of an operation to outweigh the benefits of putting similar materials close together in memory. 
 
 ### Anti-Aliasing
-I implemented Stochastic sampled antialiasing by jittering the ray that was generated from the camera with a small offset in both the x & y directions.
+I implemented Stochastic Sampled Antialiasing by jittering the ray that was generated from the camera with a small offset in both the x & y directions.
 
 <img src="img/aliased_close.png" width="400"> <img src="img/antialiased_closeup.png" width="400">
 
 ### Russian Roulette Termination
-Russian Roulette Termination is a way of randomly terminating paths early that seem to have low throughput contributions
+Russian Roulette Termination is a way of randomly terminating paths early that seem to have low throughput contributions. This feature is meant to optimize out unhelpful or unuseful paths. For open scenes, there was not much of a benefit it seemed to slow performance. It seemed more beneficial in closed scenes.
 
 ### Depth of Field
-
+I implemented Physically Based Depth of Field based on the PBRT's method;
 <img src="img/cornell.2025-10-04_23-41-19z.900samp.png" width="400"> <img src="img/cornell.2025-10-04_23-55-03z.1088samp.png" width="400">
 
 ### Refraction
+I implemented refraction to recreate glass materials.
 
 ### Texture Mapping
 This was one of the last features I implemented and spent a good amount of time debugging uvs and textures.
@@ -63,10 +64,10 @@ Environment Mapping
 
 
 ### Mesh Loading
-I implemented OBJ loading using the tinyOBJ library.
+I implemented OBJ loading using the tinyOBJ library. 
 
 ### Bounding Volume Hierarchies
-I implemented BVH and used AABB for the bounds test.
+I implemented a Naive BVH and used AABB for the bounds test. This was a diffiuclt part of the project for me, there is a lot of oppurtunity for improvement and optimization for this particular feature. In one sample scene with a mesh containing 8k triangles and environment map I started off with a speed of 6 FPS. I was able to optimize my BVH to get up to 16 FPS for the same scene. 
 
 ### Intel Image Denoise
 I integrated [Intel's Denoiser](https://github.com/RenderKit/oidn) which utilizes Deep Learning methods to converge the results faster. This feature provided a much nicer image but it effectively blurred hard edges in geometry. I'd be interested to test out the optimal number of denoise iterations get rid of the noise and still preserve hard edges.
