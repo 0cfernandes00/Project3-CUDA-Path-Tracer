@@ -8,7 +8,7 @@ CUDA Path Tracer - using 2 late days
 * Tested on: Windows 11, i9-14900HX @ 2.20GHz, Nvidia GeForce RTX 4070
 
 
-<img src="img/corrected_gamma.png" width="600">
+<img src="img/chair_closer.png" width="600">
 <img src="img/cornell.2025-10-04_23-55-03z.1088samp.png" width="600">
 
 ### Features and Sections
@@ -77,6 +77,11 @@ I integrated [Intel's Denoiser](https://github.com/RenderKit/oidn) which utilize
 <img src="img/noise_closeup.png" width="500"> <img src="img/denoise_closeup.png" width="500">
 
 ### Bloopers
+The image below was a result of not flipping the v coordinate when reading in a texture.
 <img src="img/cornell.2025-10-05_20-32-15z.87samp.png" width="400">
 <img src="img/cornell.2025-10-04_22-02-03z.6samp.png" width="400">
 
+### Resources
+Potion Model - given permission from artist [Caitlin Cheek](https://caitlincheek.com/potions)
+[Tea Set Model](https://sketchfab.com/3d-models/tea-set-cc8666654d7f4da8a0398cab82292f13)
+[Queen of Hearts Chair Model](https://sketchfab.com/3d-models/alice-in-wonderland-red-queens-throne-cbe155e9f492404d964124ce284b5f1e)
