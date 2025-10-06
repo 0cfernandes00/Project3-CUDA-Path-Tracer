@@ -9,9 +9,9 @@ CUDA Path Tracer - using 2 late days
 
 I modified CMakeLists.txt to integrate OIDN Libraries for Denoising and the tinyOBJ library for Mesh loading.
 
-<img src="img/teaScene.png" width="600">
-<img src="img/chair_closer.png" width="600">
-<img src="img/cornell.2025-10-04_23-55-03z.1088samp.png" width="600">
+<img src="img/teaScene.png" width="600"> 40k Triangles
+<img src="img/chair_closer.png" width="600"> 80k Triangles
+<img src="img/cornell.2025-10-04_23-55-03z.1088samp.png" width="600"> 8k Triangles
 <img src="img/teaScene_markup.png" width="500">
 
 ### Features and Sections
