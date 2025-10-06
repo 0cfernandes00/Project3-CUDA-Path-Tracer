@@ -7,9 +7,12 @@ CUDA Path Tracer - using 2 late days
   * [LinkedIn](https://www.linkedin.com/in/caroline-fernandes-0-/), [personal website](https://0cfernandes00.wixsite.com/visualfx)
 * Tested on: Windows 11, i9-14900HX @ 2.20GHz, Nvidia GeForce RTX 4070
 
+I modified CMakeLists.txt to integrate OIDN Libraries for Denoising and the tinyOBJ library for Mesh loading.
 
+<img src="img/teaScene.png" width="600">
 <img src="img/chair_closer.png" width="600">
 <img src="img/cornell.2025-10-04_23-55-03z.1088samp.png" width="600">
+<img src="img/teaScene_markup.png" width="500">
 
 ### Features and Sections
 
@@ -50,29 +53,31 @@ I implemented Stochastic Sampled Antialiasing by jittering the ray that was gene
 Russian Roulette Termination is a way of randomly terminating paths early that seem to have low throughput contributions. This feature is meant to optimize out unhelpful or unuseful paths. For open scenes, there was not much of a benefit it seemed to slow performance. It seemed more beneficial in closed scenes.
 
 ### Depth of Field
-I implemented Physically Based Depth of Field based on the PBRT's method;
+I implemented Physically Based Depth of Field based on the PBRT's method.
+
 <img src="img/cornell.2025-10-04_23-41-19z.900samp.png" width="400"> <img src="img/cornell.2025-10-04_23-55-03z.1088samp.png" width="400">
 
 ### Refraction
 I implemented refraction to recreate glass materials.
 
 ### Texture Mapping
-This was one of the last features I implemented and spent a good amount of time debugging uvs and textures.
+This was one of the last features I implemented and spent a good amount of time debugging uvs and textures. At the bottom I mention a blooper that helped me discover a texture flipping issue that I noticed after submitting. I have not pushed this small change so as to not utilize another late day but I have made the fix.
 <img src="img/cornell.2025-10-03_17-17-22z.81samp.png" width="400">
 
 Environment Mapping
+My project supports HDR environment map loading. Previously, when a ray bounced outside of the open cornell box, the ray terminated and returned a color value of zero. Now it returns the color sampled in the hdr texture. (TODO) An open scene with an HDR map renders quicker than the same obj inside of the cornell box, this make sense because it's less surfaces for the ray to bounce off of. (TODO) The loading of the image was done on the CPU but the sampling was done on the GPU. With its current implementation, my pathtracer produces fireflies from HDR maps with hotspots. A future optimization would be implementing MIS or use mipmapping to combat this problem.
 
 <img src="img/cornell.2025-10-04_03-36-46z.1025samp.png" width="400">
 
 
 ### Mesh Loading
-I implemented OBJ loading using the tinyOBJ library. 
+I implemented OBJ loading using the tinyOBJ library. As the number of vertices increases in a scene, the FPS gets slower. This is an expected result that lead to implementing a spatial data structure.
 
 ### Bounding Volume Hierarchies
-I implemented a Naive BVH and used AABB for the bounds test. This was a diffiuclt part of the project for me, there is a lot of oppurtunity for improvement and optimization for this particular feature. In one sample scene with a mesh containing 8k triangles and environment map I started off with a speed of 6 FPS. I was able to optimize my BVH to get up to 16 FPS for the same scene. 
+I implemented a Naive BVH and used AABB for the bounds test. This was a diffiuclt part of the project for me, there is a lot of oppurtunity for improvement and optimization for this particular feature. In one sample scene with a the potion mesh(8k triangles) and environment map I started off with a speed of 6 FPS. I was able to optimize my BVH to get up to 16 FPS for the same scene. 
 
 ### Intel Image Denoise
-I integrated [Intel's Denoiser](https://github.com/RenderKit/oidn) which utilizes Deep Learning methods to converge the results faster. This feature provided a much nicer image but it effectively blurred hard edges in geometry. I'd be interested to test out the optimal number of denoise iterations get rid of the noise and still preserve hard edges.
+I integrated [Intel's Denoiser](https://github.com/RenderKit/oidn) which utilizes Deep Learning methods to converge the results faster. This feature provided a much nicer image but it effectively blurred hard edges in geometry. (TODO Performance Impact) Intel offers a CUDA GPU version for denoising, but I only had an easier time getting the CPU denoising working. In addition to running the denoising filter it also runs a blending function. I believe having these on the GPU would increase performance but only minimally since the filter is only running every 50(user-defined) iterations. I was pleased with the improvement to my renders but I am interested to test out other denoisers to see if they produce nicer results.
 
 <img src="img/noise_closeup.png" width="500"> <img src="img/denoise_closeup.png" width="500">
 
