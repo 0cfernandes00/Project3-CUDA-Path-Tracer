@@ -9,9 +9,12 @@ CUDA Path Tracer - using 2 late days
 
 I modified CMakeLists.txt to integrate OIDN Libraries for Denoising and the tinyOBJ library for Mesh loading.
 
-<img src="img/teaScene.png" width="600"> 40k Triangles
-<img src="img/chair_closer.png" width="600"> 80k Triangles
-<img src="img/cornell.2025-10-04_23-55-03z.1088samp.png" width="600"> 8k Triangles
+<img src="img/teaScene.png" width="600"> 
+teaSceneFull.json 40k Triangles
+<img src="img/chair_closer.png" width="600"> 
+teaScene.json 80k Triangles
+<img src="img/cornell.2025-10-04_23-55-03z.1088samp.png" width="600"> 
+customMesh.json 8k Triangles
 <img src="img/teaScene_markup.png" width="500">
 
 ### Features and Sections
@@ -33,6 +36,9 @@ Part 2 Features:
 - [Bounding Volume Hierarchies](https://github.com/0cfernandes00/Project3-CUDA-Path-Tracer/blob/main/README.md#bounding-volume-hierarchies)
 - [Intel Image Denoise](https://github.com/0cfernandes00/Project3-CUDA-Path-Tracer/blob/main/README.md#intel-image-denoise)
 
+I will be testing the performance of different features under the baseline that denoising, BVH, and anti-aliasing will be enabled. I will be using the customMesh.json scene (an open cornell box) swapping out the meshes starting with potionA.obj, wahoo.obj, and dodecahedron.obj
+
+
 ### Shading
 I implemented ideal diffuse and specular shading. Diffuse shading distributes light uniformly and specular materials distribute light in one direction.
 
@@ -48,6 +54,8 @@ TODO: Performance Impact Analysis
 
 I had originally expected material sorting to improve performance but it doesn't seem to have a huge speedup. This could potentially be because the way it's sorting the materials is too expensive of an operation to outweigh the benefits of putting similar materials close together in memory. 
 
+<img src="img/MatSortChart.png" width="400">
+
 ### Anti-Aliasing
 I implemented Stochastic Sampled Antialiasing by jittering the ray that was generated from the camera with a small offset in both the x & y directions.
 
@@ -56,7 +64,10 @@ I implemented Stochastic Sampled Antialiasing by jittering the ray that was gene
 ### Russian Roulette Termination
 TODO: before after photos,Performance Impact
 
-Russian Roulette Termination is a way of randomly terminating paths early that seem to have low throughput contributions. This feature is meant to optimize out unhelpful or unuseful paths. For open scenes, there was not much of a benefit it seemed to slow performance. It seemed more beneficial in closed scenes.
+Russian Roulette Termination is a way of randomly terminating paths early that seem to have low throughput contributions. This feature is meant to optimize out unhelpful or unuseful paths. For open scenes, there was not much of a benefit it seemed to slow performance. It seemed more beneficial in closed scenes. The second chart was tested with a closed scene to fully test this feature.
+
+<img src="img/RussianRouletteChart.png" width="400">
+<img src="img/RR_closedScene_chart.png" width="500">
 
 ### Depth of Field
 TODO: Performance Impact
@@ -64,11 +75,14 @@ TODO: Performance Impact
 I implemented Physically Based Depth of Field based on PBRT's method inside the of ray generation kernel on the GPU. This was implemented as a set of physics rules that affect the rays from camera an such much sense to parallelize on the GPU.
 
 <img src="img/cornell.2025-10-04_23-41-19z.900samp.png" width="400"> <img src="img/cornell.2025-10-04_23-55-03z.1088samp.png" width="400">
+<img src="img/DOFChart.png" width="400">
 
 ### Refraction
 TODO: Performance Impact , GPU vs. CPU, optimizations left you didn't implement?
 
 I implemented refraction based on PBRT. The fresnel formula with my implementation is using pow() which I know is slow. I imagine there are oppurtunities for optimization here similar to how we learned in class with the modulo operator.
+
+<img src="img/MaterialsChart.png" width="500">
 
 ### Texture Mapping
 TODO: Performance Impact, GPU vs. CPU, optimizations left you didn't implement?
@@ -83,7 +97,7 @@ TODO: Performance Impact, GPU vs. CPU
 My project also supports HDR environment map loading. Previously, when a ray bounced outside of the open cornell box the ray terminated and returned a color value of zero. Now it returns the color sampled in the hdr texture. (TODO prove w/numbers) An open scene with an HDR map renders quicker than the same obj inside of the cornell box, this make sense because it's less surfaces for the ray to bounce off of. The loading of the image was done on the CPU but the sampling was done on the GPU. With its current implementation, my pathtracer produces fireflies from HDR maps with hotspots. A future optimization would be implementing MIS or mipmapping to combat this problem.
 
 <img src="img/cornell.2025-10-04_03-36-46z.1025samp.png" width="400">
-
+<img src="img/EnvtMapChart.png" width="400">
 
 ### Mesh Loading
 TODO: Performance Impact, GPU vs. CPU
@@ -95,12 +109,15 @@ TODO: Performance Impact
 
 Bounding Volume Hierarchies provide a way of breaking the scene into smaller subcomponents to check against for ray intersection tests. I implemented a Naive BVH and used AABB for the bounds test. This was a diffiuclt part of the project for me. In one sample scene, (with the potion mesh(8k triangles) and environment map) I started off with a speed of 6 FPS. I was able to optimize my BVH to get up to 16 FPS for the same scene. I found a few places to optimize my BVH structure, but the largest improvement was checking the bounds for each child first and then traversing to the nearest child first. Previously, I was only checking the parent then automatically traversing to the left and right children. One future optimizaiton would be using the Surface Area Heuristic as a splitting method. BVH Traversal on the CPU would be siginificantly slower, there are several computations required throughtout the process from the triangle intersection tests to AABB testing making the GPU superior. Tree building may have advantadges on the GPU if the scene was dynamic but things like SAH are easier to implement without the overhead of parallelization.
 
+<img src="img/BVHChart.png" width="400">
+
 ### Intel Image Denoise
 TODO: Performance Impact
 
-I integrated [Intel's Denoiser](https://github.com/RenderKit/oidn) which utilizes Deep Learning methods to converge the results faster. The result was nicer but it effectively blurred hard edges in geometry. Intel offers a CUDA GPU version for denoising, but I had an easier time working with the CPU denoising. The largetest pitfall of the CPU implemnentation is the amount of time the GPU is idle. Additionaly, I implemented a blending function for the two passes. I believe having denoising on the GPU would increase performance but only minimally since the filter is only running every 50(user-defined) iterations. I was pleased with the improvement to my renders but am interested to test out other denoisers.
+I integrated [Intel's Denoiser](https://github.com/RenderKit/oidn) which utilizes Deep Learning methods to converge the results faster. The result was nicer but it effectively blurred hard edges in geometry. Intel offers a CUDA GPU version for denoising, but I had an easier time working with the CPU denoising. The largetest pitfall of the CPU implemnentation is the amount of time the GPU is idle. Additionaly, I implemented a blending function for the two passes. I believe having denoising on the GPU would increase performance but only minimally since the filter is only running every 50(user-defined) iterations. I was pleased with the improvement to my renders but am interested to test out other denoisers, as expected denoising did not have a huge impact on performance.
 
 <img src="img/noise_closeup.png" width="500"> <img src="img/denoise_closeup.png" width="500">
+<img src="img/DenoiseChart.png" width="400">
 
 ### Bloopers
 The image below was a result of not flipping the v coordinate when reading in a texture.
