@@ -53,16 +53,6 @@
             "TYPE":"Diffuse",
             "RGB":[0.39, 0.26, 0.13]
         },
-	"tileA":
-        {
-            "TYPE":"image",
-	    "TEXTURE":"whiteTile.png"
-        },
-	"grass":
-        {
-            "TYPE":"image",
-	    "TEXTURE":"Grass001_1K-PNG_Color.png"
-        },
         "sky":
         {
             "TYPE":"Envt",
