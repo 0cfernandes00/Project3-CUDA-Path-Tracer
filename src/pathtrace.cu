@@ -840,7 +840,7 @@ __global__ void shadeDiffuseMaterial(
 
         // clamp uv to [0,1]
         float u = glm::clamp(intersection.uv.x, 0.0f, 1.0f);
-        float v = glm::clamp(intersection.uv.y, 0.0f, 1.0f);
+        float v = 1.0f - glm::clamp(intersection.uv.y, 0.0f, 1.0f);
 
         // map uv to texel coords (nearest sampling). You may want bilinear later.
         int iu = static_cast<int>(u * (tex.width - 1));
@@ -1015,6 +1015,15 @@ void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russian
     const Camera& cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
 
+    /*
+    // Track ray counts per bounce
+    static std::vector<int> rayCountsPerBounce;
+    if (iter == 1) { // Reset on first iteration
+        rayCountsPerBounce.clear();
+        rayCountsPerBounce.reserve(traceDepth + 1);
+    }
+    */
+
     // 2D block for generating ray from camera
     const dim3 blockSize2d(8, 8);
     const dim3 blocksPerGrid2d(
@@ -1063,6 +1072,13 @@ void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russian
     int depth = 0;
     PathSegment* dev_path_end = dev_paths + pixelcount;
     int num_paths = dev_path_end - dev_paths;
+
+    /*
+    // Record initial ray count
+    if (iter == 1) {
+        rayCountsPerBounce.push_back(num_paths);
+    }
+    */
 
     // --- PathSegment Tracing Stage ---
     // Shoot ray into scene, bounce between objects, push shading chunks
@@ -1141,9 +1157,22 @@ void pathtrace(uchar4* pbo, int frame, int iter, bool materialSort, bool russian
         //TODO: Stream compact away all of the terminated paths.
         // You may use either your implementation or `thrust::remove_if` or its
         // cousins.
+
+#if STREAM_COMPACT
         PathSegment* dev_path_end = thrust::partition(thrust::device, dev_paths, dev_paths + num_paths, usefulPath());
         num_paths = dev_path_end - dev_paths;
 
+        /*
+        // Record ray count after compaction
+        if (iter == 1) {
+            rayCountsPerBounce.push_back(num_paths);
+
+            // Print to console
+            printf("Depth %d: %d active rays (%.1f%%)\n",
+                depth, num_paths, (num_paths * 100.0f) / pixelcount);
+        }
+        */
+#endif
         
         if (num_paths == 0 || depth >= traceDepth) iterationComplete = true; // TODO: should be based off stream compaction results.
         

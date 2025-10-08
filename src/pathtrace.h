@@ -4,6 +4,7 @@
 #include "utilities.h"
 
 #define DENOISE 1
+#define STREAM_COMPACT 1
 
 void InitDataContainer(GuiDataContainer* guiData);
 void pathtraceInit(Scene *scene);
