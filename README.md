@@ -1,11 +1,7 @@
-CUDA Path Tracer - using 2 late days
+CUDA Path Tracer
 ================
 
 **University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 3**
-
-For grading purposes, my last commits were on 12:26 am on October 7th for the README: https://github.com/0cfernandes00/Project3-CUDA-Path-Tracer/commit/29728603ef7cf3ce9b1b12ad9f3ff06f96c1c811, 
-and on October 4th for the code: https://github.com/0cfernandes00/Project3-CUDA-Path-Tracer/commit/023337bac97835b082406cfab3aee59469d05fd7
-I have continued to update my code on my own time.
 
 * Caroline Fernandes
   * [LinkedIn](https://www.linkedin.com/in/caroline-fernandes-0-/), [personal website](https://0cfernandes00.wixsite.com/visualfx)
