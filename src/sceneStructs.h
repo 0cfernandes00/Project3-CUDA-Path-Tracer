@@ -36,6 +36,31 @@ struct Vertex
     Vertex(glm::vec3 p, glm::vec3 nor, glm::vec2 uv);
 };
 
+
+struct aabb
+{
+    float3 bmin = make_float3(1e30f, 1e30f, 1e30f);
+    float3 bmax = make_float3(-1e30f, -1e30f, -1e30f);
+    void grow(float3 p) 
+    { 
+        bmin.x = fminf(bmin.x, p.x);
+        bmin.y = fminf(bmin.y, p.y);
+        bmin.z = fminf(bmin.z, p.z);
+        bmax.x = fmaxf(bmax.x, p.x);
+        bmax.y = fmaxf(bmax.y, p.y);
+        bmax.z = fmaxf(bmax.z, p.z);
+    }
+    float area()
+    {
+        float3 e;
+        e.x = bmax.x - bmin.x; // box extent
+        e.y = bmax.y - bmin.y;
+        e.z = bmax.z - bmin.z;
+        return e.x * e.y + e.y * e.z + e.z * e.x;
+    }
+};
+
+
 class Triangle {
 public:
     Vertex v1;
@@ -98,6 +123,7 @@ struct Material
     } specular;
     float hasReflective;
     float hasRefractive;
+    float hasSubsurface;
     float indexOfRefraction;
     float emittance;
     int diffuseTextureID;

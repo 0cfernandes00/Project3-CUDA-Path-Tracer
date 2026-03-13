@@ -14,6 +14,7 @@ public:
     void BuildBVH(int count);
     void UpdateNodeBounds(unsigned int nodeIdx);
     void Subdivide(unsigned int nodeIdx);
+    float EvaluateSAH(const BVHNode& node, int axis, float pos);
 
 
     std::vector<Geom> geoms;

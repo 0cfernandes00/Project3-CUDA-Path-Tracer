@@ -79,6 +79,39 @@ void Scene::UpdateNodeBounds(unsigned int nodeIdx)
 
 }
 
+float Scene::EvaluateSAH(const BVHNode& node, int axis, float pos) {
+    
+    // define aabb
+    aabb leftBox, rightBox;
+
+    int leftCount = 0; 
+    int rightCount = 0;
+
+    for (unsigned int first = node.firstPrim, i = 0; i < node.primCount; i++) {
+
+        Triangle& tri = this->triangles[tri_indices[first + i]];
+        float3 tri_v1 = make_float3(tri.v1.m_pos.x, tri.v1.m_pos.y, tri.v1.m_pos.z);
+        float3 tri_v2 = make_float3(tri.v2.m_pos.x, tri.v2.m_pos.y, tri.v2.m_pos.z);
+        float3 tri_v3 = make_float3(tri.v3.m_pos.x, tri.v3.m_pos.y, tri.v3.m_pos.z);
+        if (tri.centroid[axis] < pos) {
+        
+            leftCount++;
+            leftBox.grow(tri_v1);
+            leftBox.grow(tri_v2);
+            leftBox.grow(tri_v3);
+        }
+        else {
+			rightCount++;
+            rightBox.grow(tri_v1);
+            rightBox.grow(tri_v2);
+            rightBox.grow(tri_v3);
+        }
+    }
+    float cost = leftCount * leftBox.area() + rightCount * rightBox.area();
+    return cost > 0 ? cost : 1e30f;
+
+}
+
 void Scene::Subdivide(unsigned int nodeIdx)
 {
 
@@ -88,9 +121,39 @@ void Scene::Subdivide(unsigned int nodeIdx)
 
     // Determine the axis and position of the split plane
     int axis = 0;
+    
+    /*
+    // Naive midpoint split
     if (extent.y > extent.x) axis = 1;
     if (extent.z > extent[axis]) axis = 2;
     float splitPos = node.aabbMin[axis] + extent[axis] * 0.5f;
+    */
+
+    
+    // Use SAH to find best split axis and pos
+    int bestAxis = -1;
+    float bestPos = 0.f;
+    float bestCost = 1e30f;
+    float parentCost = 0.f;
+    for(int axis = 0; axis < 3; axis++) {
+        Triangle& triangle = this->triangles[tri_indices[node.leftChild + axis]];
+        float candidatePos = triangle.centroid[axis];
+        float cost = EvaluateSAH(node, axis, candidatePos);
+
+        glm::vec3 e = node.aabbMax - node.aabbMin; // extent of parent
+        float parentArea = e.x * e.y + e.y * e.z + e.z * e.x;
+        float parentCost = node.primCount * parentArea;
+
+        if (cost < bestCost) {
+          bestPos = candidatePos;
+          bestAxis = axis;
+          bestCost = cost;
+        }
+    }
+    axis = bestAxis;
+    float splitPos = bestPos;
+    
+    if (bestCost >= parentCost) return;
 
     // Split the group of primitives in two halves using the split plane
     int i = node.firstPrim;
@@ -351,6 +414,13 @@ void Scene::loadFromJSON(const std::string& jsonName)
 			newMaterial.hasReflective = 1.f;
             //newMaterial.hasRefractive = 1.f;
             
+        }
+        else if (p["TYPE"] == "Subsurface")
+        {
+            const auto& col = p["RGB"];
+            newMaterial.color = glm::vec3(col[0], col[1], col[2]);
+            newMaterial.hasSubsurface = 1.f;
+
         }
         else if (p["TYPE"] == "image") 
         {
